@@ -1,0 +1,56 @@
+{% load otree static %}
+
+{% block title %}
+Consent
+{% endblock %}
+
+{% block content %}
+<div class="form-group">
+  <label for="subjectIdInput">Subject ID</label>
+  <input id="subjectIdInput" type="text" class="form-control" placeholder="e.g., S001" required>
+</div>
+
+<div class="form-group" style="margin-top: 10px;">
+  <label for="sessionIdInput">Session ID</label>
+  <input id="sessionIdInput" type="text" class="form-control" placeholder="e.g., session_001" required>
+</div>
+
+<button type="button" class="btn btn-primary" id="startBtn" style="margin-top: 16px;">
+  Start
+</button>
+
+<!-- Hide Next button but keep it rendered on the page -->
+<div style="display:none;">
+  {{ next_button }}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const subjectEl = document.getElementById("subjectIdInput");
+  const sessionEl = document.getElementById("sessionIdInput");
+  const startBtn = document.getElementById("startBtn");
+
+  subjectEl.value = localStorage.getItem("subject_id") || "";
+  sessionEl.value = localStorage.getItem("session_id") || "";
+
+  startBtn.addEventListener("click", () => {
+    const subject_id = (subjectEl.value || "").trim();
+    const session_id = (sessionEl.value || "").trim();
+
+    if (!subject_id || !session_id) {
+      alert("Please enter both Subject ID and Session ID.");
+      return;
+    }
+
+    localStorage.setItem("subject_id", subject_id);
+    localStorage.setItem("session_id", session_id);
+
+    // safest: submit the page form
+    const form = document.querySelector("form");
+    if (form) form.submit();
+  });
+})();
+</script>
+{% endblock %}

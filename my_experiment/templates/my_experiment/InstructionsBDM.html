@@ -1,0 +1,68 @@
+{% load otree static %}
+
+{% block title %}
+Instructions: Willingness to Pay (BDM)
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <p>
+    In this part, you will report how much each snack is worth to you.
+    You will do <strong>3 practice rounds</strong> first, then you will enter bids for all snacks.
+  </p>
+
+  <h4>What is a “bid”?</h4>
+  <p>
+    Your bid for a snack should be the <strong>maximum amount of money you would be willing to pay</strong>
+    to receive that snack. You can enter bids with cents (e.g., 2.75).
+  </p>
+
+  <h4>How the BDM rule works</h4>
+  <p>
+    After you enter your bid, the computer will draw a <strong>random price</strong> for a snack.
+    This random price is independent of your bid.
+  </p>
+
+  <ul>
+    <li>
+      If your bid is <strong>greater than or equal to</strong> the random price, you <strong>buy</strong> the snack and
+      you pay the <strong>random price</strong> (not your bid).
+    </li>
+    <li>
+      If your bid is <strong>less than</strong> the random price, you <strong>do not buy</strong> the snack and you pay nothing.
+    </li>
+  </ul>
+
+  <h4>Important: why you should bid truthfully</h4>
+  <p>
+    This rule is designed so that your best strategy is to enter your <strong>true willingness to pay</strong>:
+  </p>
+  <ul>
+    <li>
+      If you bid <strong>too low</strong>, you may miss chances to buy a snack at a low random price that you actually would have wanted.
+    </li>
+    <li>
+      If you bid <strong>too high</strong>, you might end up buying a snack at a random price that is higher than what it is worth to you.
+    </li>
+  </ul>
+  <p>
+    Because you pay the random price (not your bid), the safest and best approach is:
+    <strong>bid the maximum you are truly willing to pay</strong>.
+  </p>
+
+  <h4>What happens in the main task</h4>
+  <p>
+    You will enter bids for <strong>all snacks</strong>. Then the computer will randomly select
+    <strong>one snack</strong> to be the <strong>binding snack</strong> (the only one that is used for the purchase decision).
+    A random price will be drawn for that binding snack, and the buy/no-buy decision will be determined using the rule above.
+  </p>
+
+  <h4>Practice rounds</h4>
+  <p>
+    In the practice rounds, you will try the same rule with example snacks so you can see how the random price and decision work.
+    Practice rounds are only for learning.
+  </p>
+
+  {{ next_button }}
+</div>
+{% endblock %}

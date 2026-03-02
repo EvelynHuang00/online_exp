@@ -1,0 +1,48 @@
+{% load otree static %}
+
+{% block title %}
+    Snack Choices
+{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'my_experiment/css/styles.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div id="status"></div>
+
+  <section id="fixation" class="hidden">
+    <div class="fix-cross">+</div>
+  </section>
+
+  <section id="choice" class="hidden">
+    <div class="row">
+      <button type="button" id="leftBtn" class="choice-card">
+        <img id="leftImg" alt="" />
+        <div id="leftLabel"></div>
+      </button>
+
+      <button type="button" id="rightBtn" class="choice-card">
+        <img id="rightImg" alt="" />
+        <div id="rightLabel"></div>
+      </button>
+    </div>
+
+    <div class="hint">Use ← / → or click.</div>
+    <div id="timer"></div>
+  </section>
+
+  <section id="end" class="hidden">
+    <h3>Task complete</h3>
+    <button type="button" id="downloadBtn" class="btn btn-primary">Download CSV</button>
+    <div style="margin-top: 12px;">
+      {{ next_button }}
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{% static 'my_experiment/js/task.js' %}"></script>
+{% endblock %}

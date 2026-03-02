@@ -1,0 +1,15 @@
+{% load otree static %}
+
+{% block title %}Instructions: Snack Choices{% endblock %}
+
+{% block content %}
+<div class="container">
+  <p>You will see two snacks on the screen. Choose the one you prefer.</p>
+  <ul>
+    <li>Press <strong>←</strong> for the left snack, <strong>→</strong> for the right snack, or click the snack.</li>
+    <li>If you do not respond in time, the trial will time out and the next trial will start.</li>
+    <li>You will first complete a short practice block, then the main task.</li>
+  </ul>
+  {{ next_button }}
+</div>
+{% endblock %}

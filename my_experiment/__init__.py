@@ -25,6 +25,18 @@ class Player(BasePlayer):
 
 
 # PAGES
+class Consent(Page):
+    pass
+
+class InstructionsBDM(Page):
+    pass
+
+class WTP(Page):
+    pass
+
+class InstructionsBinary(Page):
+    pass
+
 class MyPage(Page):
     pass
 
@@ -37,4 +49,12 @@ class Results(Page):
     pass
 
 
-page_sequence = [MyPage, ResultsWaitPage, Results]
+page_sequence = [
+    Consent,
+    InstructionsBDM,
+    WTP,
+    InstructionsBinary,
+    MyPage,
+    ResultsWaitPage,
+    Results,
+]

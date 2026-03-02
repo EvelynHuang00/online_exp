@@ -1,0 +1,32 @@
+{% load otree static %}
+
+{% block title %}
+Willingness to Pay
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <p>Enter your maximum willingness to pay for each snack.</p>
+
+  <!-- BDM practice renders here first -->
+  <div id="bdmPractice"></div>
+
+  <!-- Main WTP block is hidden until practice completes -->
+  <div id="wtpMain" class="hidden">
+    <div id="wtpForm"></div>
+
+    <div id="bdmResult" style="margin-top:16px;"></div>
+
+    <section id="end" style="margin-top:16px;">
+      <button type="button" id="downloadWtpBtn" class="btn btn-primary">Download WTP CSV</button>
+      <div style="margin-top:12px;">
+        <button class="otree-btn-next btn btn-primary" id="nextBtn" disabled>Next</button>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{% static 'my_experiment/js/wtp.js' %}"></script>
+{% endblock %}

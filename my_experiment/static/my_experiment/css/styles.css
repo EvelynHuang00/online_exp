@@ -1,0 +1,28 @@
+.container { max-width: 900px; margin: 40px auto; font-family: system-ui, Arial; }
+.hidden { display: none; }
+.fix-cross { font-size: 64px; text-align: center; padding: 80px 0; }
+
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.choice-card {
+  padding: 16px;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+
+  min-height: 320px;          /* <-- add */
+  display: flex;              /* <-- add */
+  flex-direction: column;     /* <-- add */
+  align-items: center;        /* <-- add */
+  justify-content: flex-start;/* <-- add */
+  gap: 12px;                  /* <-- add */
+}
+
+.choice-card img {
+  width: 100%;
+  height: 220px;              /* <-- change from max-height to fixed height */
+  object-fit: contain;
+  display: block;
+}
+.hint { margin-top: 12px; color: #555; }
+#timer { margin-top: 8px; color: #555; }
