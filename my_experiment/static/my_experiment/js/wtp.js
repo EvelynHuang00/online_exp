@@ -5,13 +5,13 @@ import { downloadCSV } from "./export.js";
 const subject_id = localStorage.getItem("subject_id") || "S001";
 const session_id = localStorage.getItem("session_id") || "session_001";
 
-// Expected WTP.html structure (inside block content):
+// Expected WTP.html structure:
 // <div id="bdmPractice"></div>
 // <div id="wtpMain" class="hidden">
 //   <div id="wtpForm"></div>
-//   <div id="bdmResult" style="margin-top:16px;"></div>
-//   <button type="button" id="downloadWtpBtn" class="btn btn-primary">Download WTP CSV</button>
-//   <button class="otree-btn-next btn btn-secondary" id="nextBtn" disabled>Next</button>
+//   <div id="bdmResult"></div>
+//   <button type="button" id="downloadWtpBtn">Download WTP CSV</button>
+//   <button class="otree-btn-next" id="nextBtn" disabled>Next</button>
 // </div>
 
 const practiceEl = document.getElementById("bdmPractice");
@@ -49,9 +49,13 @@ function drawPrice() {
   const k = Math.floor(Math.random() * (nSteps + 1));
   return Number((k * step).toFixed(2));
 }
-// -----------------------------------------------------
 
-// -------------------- Main WTP table --------------------
+// Slider settings
+const SLIDER_MIN = 0;
+const SLIDER_MAX = Number(BDM.ENDOWMENT);
+const SLIDER_STEP = 0.25;
+
+// -------------------- Main WTP table (sliders) --------------------
 function buildMainWTPTable() {
   container.innerHTML = `
     <table class="table">
@@ -67,15 +71,18 @@ function buildMainWTPTable() {
           <tr>
             <td>${s.label}</td>
             <td>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                class="form-control"
-                id="bid_${s.id}"
-                placeholder="0.00"
-                required
-              />
+              <div style="display:flex; gap:12px; align-items:center;">
+                <input
+                  type="range"
+                  min="${SLIDER_MIN}"
+                  max="${SLIDER_MAX}"
+                  step="${SLIDER_STEP}"
+                  value="0"
+                  id="bid_${s.id}"
+                  class="form-range"
+                />
+                <span id="bidval_${s.id}" style="min-width:72px; text-align:right;">$0.00</span>
+              </div>
             </td>
           </tr>
         `
@@ -83,49 +90,50 @@ function buildMainWTPTable() {
       </tbody>
     </table>
   `;
+
+  // Attach slider UI updates
+  for (const s of SNACKS) {
+    const slider = document.getElementById(`bid_${s.id}`);
+    const label = document.getElementById(`bidval_${s.id}`);
+    if (!slider || !label) continue;
+
+    const update = () => {
+      const v = Number(slider.value);
+      label.textContent = `$${v.toFixed(2)}`;
+      setNextEnabled(validateAllBids());
+    };
+
+    slider.addEventListener("input", update);
+    update(); // initialize
+  }
 }
 
+// -------------------- Next gating --------------------
 function setNextEnabled(enabled) {
   const nextBtn = document.getElementById("nextBtn");
   if (nextBtn) nextBtn.disabled = !enabled;
 }
 
 function validateAllBids() {
-  // Only validate after the main table is shown
-  // If mainEl is hidden, do not allow Next
   if (mainEl && mainEl.classList.contains("hidden")) return false;
 
   for (const s of SNACKS) {
     const el = document.getElementById(`bid_${s.id}`);
     if (!el) return false;
-    const val = (el.value || "").trim();
-    if (val === "") return false;
-    const num = Number(val);
+    const num = Number(el.value);
     if (!Number.isFinite(num) || num < 0) return false;
   }
   return true;
 }
 
-function attachBidValidationListeners() {
-  for (const s of SNACKS) {
-    const el = document.getElementById(`bid_${s.id}`);
-    if (!el) continue;
-    el.addEventListener("input", () => {
-      setNextEnabled(validateAllBids());
-    });
-  }
-  // initialize
-  setNextEnabled(validateAllBids());
-}
-
+// -------------------- Collect bids (sliders) --------------------
 function collectBids() {
   const bids = [];
   for (const s of SNACKS) {
     const el = document.getElementById(`bid_${s.id}`);
-    const val = (el?.value ?? "").trim();
-    if (val === "") return { ok: false, msg: `Missing bid for: ${s.label}` };
+    if (!el) return { ok: false, msg: `Missing slider for: ${s.label}` };
 
-    const bid = Number(val);
+    const bid = Number(el.value);
     if (!Number.isFinite(bid) || bid < 0) return { ok: false, msg: `Invalid bid for: ${s.label}` };
 
     bids.push({
@@ -136,9 +144,8 @@ function collectBids() {
   }
   return { ok: true, bids };
 }
-// ------------------------------------------------------
 
-// -------------------- BDM practice --------------------
+// -------------------- BDM practice (sliders) --------------------
 const PRACTICE_N = Number(BDM.PRACTICE_TRIALS ?? 3);
 let practiceCount = 0;
 
@@ -157,7 +164,18 @@ function renderPracticeTrial() {
 
       <div class="form-group">
         <label>Your bid</label>
-        <input type="number" min="0" step="0.01" class="form-control" id="practiceBid" placeholder="0.00" required>
+        <div style="display:flex; gap:12px; align-items:center;">
+          <input
+            type="range"
+            min="${SLIDER_MIN}"
+            max="${SLIDER_MAX}"
+            step="${SLIDER_STEP}"
+            value="0"
+            class="form-range"
+            id="practiceBid"
+          />
+          <span id="practiceBidVal" style="min-width:72px; text-align:right;">$0.00</span>
+        </div>
       </div>
 
       <button type="button" class="btn btn-primary" id="practiceSubmit" style="margin-top:12px;">Submit</button>
@@ -165,14 +183,19 @@ function renderPracticeTrial() {
     </div>
   `;
 
-  document.getElementById("practiceSubmit").addEventListener("click", () => {
-    const val = (document.getElementById("practiceBid").value || "").trim();
-    if (val === "") {
-      alert("Enter a bid.");
-      return;
-    }
+  const practiceSlider = document.getElementById("practiceBid");
+  const practiceLabel = document.getElementById("practiceBidVal");
 
-    const bid = Number(val);
+  const updatePractice = () => {
+    const v = Number(practiceSlider.value);
+    practiceLabel.textContent = `$${v.toFixed(2)}`;
+  };
+
+  practiceSlider.addEventListener("input", updatePractice);
+  updatePractice();
+
+  document.getElementById("practiceSubmit").addEventListener("click", () => {
+    const bid = Number(practiceSlider.value);
     if (!Number.isFinite(bid) || bid < 0) {
       alert("Invalid bid.");
       return;
@@ -201,7 +224,7 @@ function renderPracticeTrial() {
       } else {
         renderPracticeTrial();
       }
-    }, 2000);
+    }, 4000);
   });
 }
 
@@ -209,11 +232,10 @@ function showMain() {
   if (practiceEl) practiceEl.innerHTML = "";
   show(mainEl);
   buildMainWTPTable();
-  attachBidValidationListeners();
+  setNextEnabled(validateAllBids());
 }
-// ------------------------------------------------------
 
-// -------------------- Main WTP: download + enable Next --------------------
+// -------------------- Main WTP: download --------------------
 downloadBtn?.addEventListener("click", () => {
   const out = collectBids();
   if (!out.ok) {
@@ -270,12 +292,11 @@ downloadBtn?.addEventListener("click", () => {
   }
 
   downloadCSV(rows, `wtp_subject_${subject_id}.csv`);
-
 });
-// -----------------------------------------------------------------------
 
-// Start: hide main, run practice first (if enabled)
+// -------------------- Start --------------------
 hide(mainEl);
+setNextEnabled(false);
 
 if (PRACTICE_N > 0) {
   renderPracticeTrial();

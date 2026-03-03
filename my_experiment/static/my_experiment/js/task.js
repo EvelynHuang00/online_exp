@@ -3,17 +3,21 @@ import { EXPERIMENT, SNACKS } from "./config.js";
 import { buildTrials } from "./trialgen.js";
 import { downloadCSV } from "./export.js";
 
+const $ = (id) => document.getElementById(id);
+
 const subject_id = localStorage.getItem("subject_id") || "S001";
 const session_id = localStorage.getItem("session_id") || "session_001";
 
-const $ = (id) => document.getElementById(id);
+const FASTER_MS = 2000;
 
 const snackById = new Map(SNACKS.map((s) => [s.id, s]));
 
 const statusEl = $("status");
 const fixationEl = $("fixation");
 const choiceEl = $("choice");
+const fasterEl = $("faster");
 const endEl = $("end");
+const mainHintEl = $("mainHint");
 
 const leftBtn = $("leftBtn");
 const rightBtn = $("rightBtn");
@@ -25,7 +29,7 @@ const timerEl = $("timer");
 const downloadBtn = $("downloadBtn");
 
 // -------------------- PRACTICE + MAIN TRIALS --------------------
-const allTrials = buildTrials(); // your existing 120 trials generator
+const allTrials = buildTrials(); // 120 trials
 const PRACTICE_N = Number(EXPERIMENT.PRACTICE_BINARY_TRIALS ?? 5);
 
 const practiceTrials = allTrials.slice(0, PRACTICE_N);
@@ -45,10 +49,10 @@ let timeoutHandle = null;
 let countdownHandle = null;
 
 function show(el) {
-  el.classList.remove("hidden");
+  if (el) el.classList.remove("hidden");
 }
 function hide(el) {
-  el.classList.add("hidden");
+  if (el) el.classList.add("hidden");
 }
 
 function setChoiceScreen(trial) {
@@ -62,15 +66,9 @@ function setChoiceScreen(trial) {
 }
 
 function startCountdown() {
-  const start = performance.now();
-  const total = EXPERIMENT.MAX_RESPONSE_WINDOW_MS;
-
-  countdownHandle = setInterval(() => {
-    const elapsed = performance.now() - start;
-    const remaining = Math.max(0, total - elapsed);
-    timerEl.textContent = `Time left: ${(remaining / 1000).toFixed(1)}s`;
-    if (remaining <= 0) clearInterval(countdownHandle);
-  }, 100);
+  // Do not show any countdown UI
+  if (timerEl) timerEl.textContent = "";
+  return;
 }
 
 function cleanupTrialTimers() {
@@ -80,7 +78,25 @@ function cleanupTrialTimers() {
   countdownHandle = null;
 }
 
-function recordResponse({ chosen_item_id, is_timeout }) {
+function showFasterThenContinue() {
+  hide(choiceEl);
+  hide(fixationEl);   // ensure cross is NOT visible during Faster
+  if (timerEl) timerEl.textContent = "";
+
+  show(fasterEl);
+
+  setTimeout(() => {
+    hide(fasterEl);
+
+    // After Faster, show fixation (ITI) before moving on (optional but clean)
+    show(fixationEl);
+    setTimeout(() => {
+      nextTrial();
+    }, EXPERIMENT.ITI_MS);
+  }, FASTER_MS);
+}
+
+function recordResponse({ chosen_item_id, is_timeout, advance = "normal" }) {
   if (!awaitingResponse) return;
 
   awaitingResponse = false;
@@ -94,10 +110,7 @@ function recordResponse({ chosen_item_id, is_timeout }) {
   rows.push({
     subject_id,
     session_id,
-    // "trial_index" here is within-block; keep it as-is for readability
     trial_index: trialIndex + 1,
-
-    // add practice flag so you can filter later
     is_practice: isPracticeBlock ? 1 : 0,
 
     left_item_id: trial.left_item_id,
@@ -110,21 +123,29 @@ function recordResponse({ chosen_item_id, is_timeout }) {
   });
 
   hide(choiceEl);
-  setTimeout(nextTrial, EXPERIMENT.ITI_MS);
+
+  if (advance === "faster") {
+    showFasterThenContinue();
+  } else {
+    show(fixationEl);
+    setTimeout(nextTrial, EXPERIMENT.ITI_MS);
+  }
 }
 
 function onKeyDown(e) {
   if (!awaitingResponse) return;
-  if (e.key === EXPERIMENT.KEY_LEFT)
+
+  if (e.key === EXPERIMENT.KEY_LEFT) {
     recordResponse({
       chosen_item_id: trials[trialIndex].left_item_id,
       is_timeout: false,
     });
-  if (e.key === EXPERIMENT.KEY_RIGHT)
+  } else if (e.key === EXPERIMENT.KEY_RIGHT) {
     recordResponse({
       chosen_item_id: trials[trialIndex].right_item_id,
       is_timeout: false,
     });
+  }
 }
 
 function nextTrial() {
@@ -138,10 +159,11 @@ function nextTrial() {
       trials = mainTrials;
       trialIndex = -1;
 
-      // brief message before main starts
       statusEl.textContent = "Practice complete. Main task starts now.";
       hide(fixationEl);
       hide(choiceEl);
+      hide(fasterEl);
+      if (timerEl) timerEl.textContent = "";
 
       setTimeout(nextTrial, 800);
       return;
@@ -152,9 +174,15 @@ function nextTrial() {
     return;
   }
 
-  const blockLabel = isPracticeBlock ? "Practice" : "Main";
-  statusEl.textContent = `${blockLabel}: Trial ${trialIndex + 1} / ${trials.length}`;
+    if (isPracticeBlock) {
+        statusEl.textContent = `Practice: Trial ${trialIndex + 1} / ${trials.length}`;
+        hide(mainHintEl);
+    } else {
+        statusEl.textContent = "";
+        show(mainHintEl);
+    }
 
+  hide(fasterEl);
   show(fixationEl);
   hide(choiceEl);
 
@@ -168,9 +196,11 @@ function nextTrial() {
     trialStartPerf = performance.now();
 
     startCountdown();
+    if (!isPracticeBlock && timerEl) timerEl.textContent = "";
 
     timeoutHandle = setTimeout(() => {
-      recordResponse({ chosen_item_id: null, is_timeout: true });
+      const advance = isPracticeBlock ? "normal" : "faster";
+      recordResponse({ chosen_item_id: null, is_timeout: true, advance });
     }, EXPERIMENT.MAX_RESPONSE_WINDOW_MS);
   }, EXPERIMENT.FIXATION_MS);
 }
@@ -178,6 +208,7 @@ function nextTrial() {
 function finishTask() {
   hide(fixationEl);
   hide(choiceEl);
+  hide(fasterEl);
   show(endEl);
 
   // Download ONLY main trials (exclude practice)
@@ -196,6 +227,7 @@ leftBtn.onclick = () => {
     is_timeout: false,
   });
 };
+
 rightBtn.onclick = () => {
   if (!awaitingResponse) return;
   recordResponse({

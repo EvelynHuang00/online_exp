@@ -11,7 +11,7 @@ export const EXPERIMENT = {
 
 export const BDM = {
   ENDOWMENT: 10.00,
-  PRICE_STEP: 0.50,
+  PRICE_STEP: 0.25,
   PRACTICE_TRIALS: 3,
 };
 
