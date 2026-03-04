@@ -30,7 +30,10 @@ const downloadBtn = $("downloadBtn");
 
 // -------------------- PRACTICE + MAIN TRIALS --------------------
 const allTrials = buildTrials(); // 120 trials
-const PRACTICE_N = Number(EXPERIMENT.PRACTICE_BINARY_TRIALS ?? 5);
+const PRACTICE_N = Math.min(
+  Number(EXPERIMENT.PRACTICE_BINARY_TRIALS ?? 5),
+  allTrials.length
+);
 
 const practiceTrials = allTrials.slice(0, PRACTICE_N);
 const mainTrials = allTrials.slice(PRACTICE_N);
@@ -220,21 +223,6 @@ function finishTask() {
   window.removeEventListener("keydown", onKeyDown);
 }
 
-leftBtn.onclick = () => {
-  if (!awaitingResponse) return;
-  recordResponse({
-    chosen_item_id: trials[trialIndex].left_item_id,
-    is_timeout: false,
-  });
-};
-
-rightBtn.onclick = () => {
-  if (!awaitingResponse) return;
-  recordResponse({
-    chosen_item_id: trials[trialIndex].right_item_id,
-    is_timeout: false,
-  });
-};
 
 window.addEventListener("keydown", onKeyDown);
 nextTrial();

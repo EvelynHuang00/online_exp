@@ -51,9 +51,16 @@ function drawPrice() {
 }
 
 // Slider settings
+
+function randomSliderValue() {
+  const nSteps = Math.round((SLIDER_MAX - SLIDER_MIN) / SLIDER_STEP);
+  const k = Math.floor(Math.random() * (nSteps + 1));
+  return Number((SLIDER_MIN + k * SLIDER_STEP).toFixed(2));
+}
+
 const SLIDER_MIN = 0;
-const SLIDER_MAX = Number(BDM.ENDOWMENT);
-const SLIDER_STEP = 0.25;
+const SLIDER_MAX = 1.0;
+const SLIDER_STEP = 0.05;
 
 // -------------------- Main WTP table (sliders) --------------------
 function buildMainWTPTable() {
@@ -77,7 +84,7 @@ function buildMainWTPTable() {
                   min="${SLIDER_MIN}"
                   max="${SLIDER_MAX}"
                   step="${SLIDER_STEP}"
-                  value="0"
+                  value="${randomSliderValue()}"
                   id="bid_${s.id}"
                   class="form-range"
                 />

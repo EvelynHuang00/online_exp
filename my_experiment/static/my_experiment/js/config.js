@@ -2,7 +2,7 @@ export const EXPERIMENT = {
   MAX_RESPONSE_WINDOW_MS: 12000,
   FIXATION_MS: 500,
   ITI_MS: 500,
-  REPEAT_BINARY_CHOICES: 8,
+  REPEAT_BINARY_CHOICES: 1,
   KEY_LEFT: "ArrowLeft",
   KEY_RIGHT: "ArrowRight",
   PRACTICE_BINARY_TRIALS: 5,
@@ -10,9 +10,9 @@ export const EXPERIMENT = {
 };
 
 export const BDM = {
-  ENDOWMENT: 10.00,
-  PRICE_STEP: 0.25,
-  PRACTICE_TRIALS: 3,
+  ENDOWMENT: 1.00,
+  PRICE_STEP: 0.05,
+  PRACTICE_TRIALS: 0,
 };
 
 export const SNACKS = [
