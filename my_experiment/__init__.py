@@ -8,7 +8,7 @@ Your app description
 
 class C(BaseConstants):
     NAME_IN_URL = 'my_experiment'
-    PLAYERS_PER_GROUP = None
+    PLAYERS_PER_GROUP = 6
     NUM_ROUNDS = 1
 
 
