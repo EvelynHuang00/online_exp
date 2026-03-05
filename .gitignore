@@ -1,13 +1,22 @@
-venv
+# Python virtual environments
+venv/
+.venv/
+
+# oTree / Django generated files
 staticfiles
-./db.sqlite3
-.idea
-*~
-*.sqlite3
 _static_root
-_bots*s
+db.sqlite3
+*.sqlite3
+*.otreezip
+
+# temporary files
+*~
 __temp*
 __pycache__/
 *.py[cod]
+
+# macOS
 .DS_Store
-*.otreezip
+
+# IDE
+.idea
