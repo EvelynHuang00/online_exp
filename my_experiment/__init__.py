@@ -21,7 +21,8 @@ class Group(BaseGroup):
 
 
 class Player(BasePlayer):
-    pass
+    wtp_data_json = models.LongStringField(blank=True)
+    choice_data_json = models.LongStringField(blank=True)
 
 
 # PAGES
@@ -32,13 +33,15 @@ class InstructionsBDM(Page):
     pass
 
 class WTP(Page):
-    pass
+    form_model = 'player'
+    form_fields = ['wtp_data_json']
 
 class InstructionsBinary(Page):
     pass
 
 class MyPage(Page):
-    pass
+    form_model = 'player'
+    form_fields = ['choice_data_json']
 
 
 class ResultsWaitPage(WaitPage):

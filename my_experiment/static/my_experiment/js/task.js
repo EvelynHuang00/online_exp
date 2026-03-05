@@ -213,6 +213,9 @@ function finishTask() {
   hide(choiceEl);
   hide(fasterEl);
   show(endEl);
+  
+  const mainRowsOut = rows.filter(r => r.is_practice === 0);
+  document.getElementById("choiceDataJson").value = JSON.stringify(mainRowsOut);
 
   // Download ONLY main trials (exclude practice)
   downloadBtn.onclick = () => {
