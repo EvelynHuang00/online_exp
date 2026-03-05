@@ -1,42 +1,48 @@
+"""
+Random Serial Dictatorship (RSD).
+
+Given each participant's strict ranking over snacks, RSD:
+1) draws a random permutation of participants
+2) iterates in that order, each picks their best available snack
+
+This file only implements RSD. The shared interface is in allocation/__init__.py.
+"""
+
 import random
 
 
-def run_rsd(player_ids, rankings):
+def run_rsd(player_ids, rankings, seed=None):
     """
-    Random Serial Dictatorship allocation.
+    Run RSD allocation.
 
-    Args
-    ----
-    player_ids : list[int]
-        Player identifiers (we use id_in_group).
+    Args:
+        player_ids: list[int]
+        rankings: dict[int, list[str]] (best -> worst)
+        seed: optional int for reproducibility
 
-    rankings : dict[int, list[str]]
-        Mapping player_id -> ranked snack list (best -> worst).
-
-    Returns
-    -------
-    assignment : dict[int, str]
-        Mapping player_id -> assigned snack.
-
-    order : list[int]
-        Random dictatorship order.
+    Returns:
+        assignment: dict[int, str]
+        order: list[int]
+        meta: dict (debug info)
     """
+    rng = random.Random(seed)
 
-    order = player_ids.copy()
-    random.shuffle(order)
+    order = list(player_ids)
+    rng.shuffle(order)
 
-    # Determine available snacks from the first player's ranking
-    available = set(rankings[order[0]])
+    # Available snacks inferred from any player's ranking list.
+    # Assumes all players rank the same snack labels.
+    first_pid = order[0]
+    available = set(rankings[first_pid])
 
     assignment = {}
 
     for pid in order:
-
-        for snack in rankings[pid]:
-
-            if snack in available:
-                assignment[pid] = snack
-                available.remove(snack)
+        for snack_id in rankings[pid]:
+            if snack_id in available:
+                assignment[pid] = snack_id
+                available.remove(snack_id)
                 break
 
-    return assignment, order
+    meta = {"seed": seed, "algo": "rsd"}
+    return assignment, order, meta

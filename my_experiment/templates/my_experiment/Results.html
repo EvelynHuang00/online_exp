@@ -1,16 +1,74 @@
 {% load otree static %}
 
+{# 
+Results page shown after the allocation algorithm runs.
+
+Purpose of this page:
+1) Confirm the experiment finished successfully.
+2) Display debugging information during development.
+3) Show the snack assigned by the allocation algorithm.
+
+IMPORTANT:
+- Debug information (ranking, win counts, JSON length) should be removed
+  or hidden before running the real experiment with participants.
+#}
+
 {% block title %}
 Finished
 {% endblock %}
 
 {% block content %}
 
+{# ------------------------------------------------------------ #}
+{# Allocation mechanism currently used (RSD for now).           #}
+{# Useful when switching between algorithms during testing.     #}
+{# ------------------------------------------------------------ #}
+
+<p><strong>Allocation algorithm:</strong> {{ allocation_algo }}</p>
+
+
+{# ------------------------------------------------------------ #}
+{# DEBUG SECTION                                                #}
+{# These elements help verify that backend inference works.     #}
+{# They should be removed or hidden in the final deployment.    #}
+{# ------------------------------------------------------------ #}
+
 <p><strong>DEBUG JSON length:</strong> {{ debug_json_len }}</p>
 
+{# Ranking inferred from binary choices (best → worst). #}
+<p><strong>Inferred ranking (best → worst):</strong></p>
+<ul>
+  {% for sid in inferred_ranking %}
+    <li>{{ sid }}</li>
+  {% endfor %}
+</ul>
+
+{# Raw win counts used to construct the ranking. #}
+<p><strong>Win counts:</strong></p>
+<pre>{{ win_counts }}</pre>
+
+
+{# ------------------------------------------------------------ #}
+{# RSD-specific debugging output.                               #}
+{# For other algorithms (e.g., DA), this field may be empty.    #}
+{# ------------------------------------------------------------ #}
+
+{% if rsd_order %}
 <p><strong>RSD order:</strong> {{ rsd_order }}</p>
+{% endif %}
+
+
+{# ------------------------------------------------------------ #}
+{# FINAL EXPERIMENT OUTPUT                                      #}
+{# This is the actual allocation result participants receive.   #}
+{# ------------------------------------------------------------ #}
 
 <p><strong>Assigned snack:</strong> {{ assigned_snack }}</p>
+
+
+{# ------------------------------------------------------------ #}
+{# End-of-experiment message shown to participants.             #}
+{# ------------------------------------------------------------ #}
 
 <div class="container">
   <h3>Thank you!</h3>
