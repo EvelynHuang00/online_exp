@@ -1,25 +1,42 @@
 """
+my_experiment.inference.ranking
+
 Infer a strict snack ranking from binary-choice trials.
 
-Current method (simple, debug-friendly):
-- Count how many times each snack is chosen in main (non-practice) trials.
-- Sort by win count (desc), tie-break by snack_id (asc) to force strict order.
+Current design (per updated experiment design):
+- Score each snack by **win-count**: number of valid main-task trials in which
+  the participant chose that snack.
+- If multiple snacks share the same win-count, break ties by RANDOMLY
+  permuting the snacks within each tie group.
+- Record tie-group membership (grouped by identical win-count) so downstream
+  exports can mark tie groups without redundant columns.
 
-This is a placeholder for more advanced inference later (e.g., BT model, RT tie-breaks).
+Notes
+-----
+A "valid" trial means:
+- main task (not practice),
+- not timeout,
+- and has a non-empty chosen_item_id.
+
+Random tie-breaking is seeded (caller provides a seed) so the result is
+reproducible.
 """
 
 import json
+import random
 from collections import defaultdict
 
 
-# Keep snack IDs consistent across frontend/backed.
+# IMPORTANT: Keep snack IDs consistent across frontend/back-end.
 SNACK_IDS = ["snack1", "snack2", "snack3", "snack4", "snack5", "snack6"]
 
 
 def parse_binary_rows(binary_rows_json):
     """
-    Parse the JSON string from Player.binary_rows_json into a list[dict].
-    Returns [] if empty or invalid.
+    Parse Player.binary_rows_json into a list[dict].
+
+    Returns:
+        list[dict]: trial rows, or [] if empty/invalid.
     """
     if not binary_rows_json:
         return []
@@ -32,10 +49,10 @@ def parse_binary_rows(binary_rows_json):
 
 def filter_main_non_timeout(rows):
     """
-    Keep only rows that are:
-    - main trials (is_practice == 0)
-    - non-timeout (is_timeout == 0)
-    - have chosen_item_id
+    Keep only VALID rows:
+    - main trials: is_practice == 0
+    - non-timeout: is_timeout == 0
+    - chosen_item_id is non-empty
     """
     kept = []
     for r in rows:
@@ -52,21 +69,68 @@ def filter_main_non_timeout(rows):
 
 def infer_ranking_by_win_count(rows):
     """
-    Infer ranking via win counts.
+    (Legacy helper) Infer ranking via win counts.
+
+    WARNING:
+    - This function breaks ties deterministically by snack_id (NOT random).
+    - Kept only for backwards compatibility / debugging.
 
     Returns:
-        ranking: list[str] best -> worst
-        win_counts: dict[str, int]
+        ranking (list[str]): best -> worst (strict)
+        win_counts (dict[str, int])
     """
     win_counts = defaultdict(int)
     for sid in SNACK_IDS:
         win_counts[sid] = 0
 
     for r in rows:
-        chosen = r.get("chosen_item_id")
+        chosen = (r.get("chosen_item_id") or "").strip()
         if chosen in win_counts:
             win_counts[chosen] += 1
 
-    # Strict order: primary = -wins, secondary = snack_id
+    # Deterministic tie-break by snack_id (legacy behavior).
     ranking = sorted(SNACK_IDS, key=lambda sid: (-win_counts[sid], sid))
     return ranking, dict(win_counts)
+
+
+def infer_ranking_win_count_random_ties(rows, seed):
+    """
+    Infer strict ranking using win-count scoring + random tie-breaking.
+
+    Args:
+        rows (list[dict]): VALID rows (caller should filter first).
+        seed (int): seed for reproducible tie-breaking.
+
+    Returns:
+        ranking (list[str]): best -> worst (strict)
+        win_counts (dict[str, int])
+        tie_group_id_by_snack (dict[str, int]):
+            1 = highest win-count group, larger = lower win-count groups.
+        final_rank_by_snack (dict[str, int]):
+            final strict rank after tie-breaking (1..6).
+    """
+    rng = random.Random(int(seed))
+
+    # 1) Win-counts
+    win_counts = {sid: 0 for sid in SNACK_IDS}
+    for r in rows:
+        chosen = (r.get("chosen_item_id") or "").strip()
+        if chosen in win_counts:
+            win_counts[chosen] += 1
+
+    # 2) Tie groups by identical win-count, ordered by win-count descending.
+    unique_scores = sorted({win_counts[sid] for sid in SNACK_IDS}, reverse=True)
+    tie_group_id_by_score = {score: idx + 1 for idx, score in enumerate(unique_scores)}
+    tie_group_id_by_snack = {
+        sid: tie_group_id_by_score[win_counts[sid]] for sid in SNACK_IDS
+    }
+
+    # 3) Strict ranking: randomize within each tie group.
+    ranking = []
+    for score in unique_scores:
+        members = [sid for sid in SNACK_IDS if win_counts[sid] == score]
+        rng.shuffle(members)  # <-- the only tie-break rule now
+        ranking.extend(members)
+
+    final_rank_by_snack = {sid: idx + 1 for idx, sid in enumerate(ranking)}
+    return ranking, win_counts, tie_group_id_by_snack, final_rank_by_snack

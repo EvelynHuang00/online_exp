@@ -17,6 +17,12 @@ Willingness to Pay
 
     <div id="bdmResult" style="margin-top:16px;"></div>
 
+    <!-- ADDED:
+         Hidden input for sending WTP rows back to the backend.
+         Purpose: enable custom_export of the WTP dataset without changing the
+         existing participant-facing interaction flow. -->
+    <input type="hidden" name="wtp_rows_json" id="wtp_rows_json">
+
     <section id="end" style="margin-top:16px;">
       <button type="button" id="downloadWtpBtn" class="btn btn-primary">Download WTP CSV</button>
       <div style="margin-top:12px;">

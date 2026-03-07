@@ -10,6 +10,7 @@ const session_id = localStorage.getItem("session_id") || "session_001";
 // <div id="wtpMain" class="hidden">
 //   <div id="wtpForm"></div>
 //   <div id="bdmResult"></div>
+//   <input type="hidden" name="wtp_rows_json" id="wtp_rows_json">
 //   <button type="button" id="downloadWtpBtn">Download WTP CSV</button>
 //   <button class="otree-btn-next" id="nextBtn" disabled>Next</button>
 // </div>
@@ -20,6 +21,12 @@ const mainEl = document.getElementById("wtpMain");
 const container = document.getElementById("wtpForm");
 const downloadBtn = document.getElementById("downloadWtpBtn");
 const resultEl = document.getElementById("bdmResult");
+
+/* ADDED:
+   This hidden input is used to send compact WTP data back to oTree backend.
+   The goal is to support custom_export for the WTP dataset, while keeping the
+   original participant-facing CSV download behavior unchanged. */
+const hiddenWtpJson = document.getElementById("wtp_rows_json");
 
 function show(el) {
   if (el) el.classList.remove("hidden");
@@ -51,7 +58,6 @@ function drawPrice() {
 }
 
 // Slider settings
-
 function randomSliderValue() {
   const nSteps = Math.round((SLIDER_MAX - SLIDER_MIN) / SLIDER_STEP);
   const k = Math.floor(Math.random() * (nSteps + 1));
@@ -283,6 +289,33 @@ downloadBtn?.addEventListener("click", () => {
       timestamp,
     };
   });
+
+  /* ADDED:
+     Build a compact backend payload for custom_export.
+     This does NOT change the existing local CSV download format.
+     It only adds a JSON copy that oTree can store in Player.wtp_rows_json.
+
+     Target exported columns:
+     session_id, subject_id, snack_id, bid_value, price_draw
+
+     We keep price_draw only for the binding snack, and leave it blank for the
+     non-binding snacks. */
+  const backendRows = out.bids.map((r) => {
+    const isBinding = r.snack_id === binding.id;
+    return {
+      snack_id: r.snack_id,
+      bid_value: r.bid,
+      price_draw: isBinding ? Number(price_draw.toFixed(2)) : "",
+    };
+  });
+
+  /* ADDED:
+     Write the backend payload into the hidden input so the page submission
+     can send WTP data to the backend. This is the only required frontend
+     change for enabling the WTP custom export. */
+  if (hiddenWtpJson) {
+    hiddenWtpJson.value = JSON.stringify(backendRows);
+  }
 
   if (resultEl) {
     resultEl.innerHTML = `
