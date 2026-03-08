@@ -31,7 +31,6 @@
       </button>
     </div>
 
-
     <div id="timer"></div>
   </section>
 
@@ -41,7 +40,9 @@
 
   <section id="end" class="hidden">
     <h3>Task complete</h3>
+
     <button type="button" id="downloadBtn" class="btn btn-primary">Download CSV</button>
+<<<<<<< HEAD
     
      <!--
     Hidden field used to send the trial dataset from the frontend to the backend.
@@ -55,9 +56,14 @@
     in the JavaScript task.
     -->
     <input type="hidden" name="binary_rows_json" id="binary_rows_json">
+=======
+
+    <!-- IMPORTANT: hidden field must be inside the form -->
+    <input type="hidden" name="choice_data_json" id="choiceDataJson" value="">
+>>>>>>> f3b579fefd79173a0b657c40314ea0d694da6987
 
     <div style="margin-top: 12px;">
-      {{ next_button }}
+      <button class="otree-btn-next btn btn-primary" type="submit">Next</button>
     </div>
   </section>
 </div>
