@@ -22,12 +22,6 @@ const container = document.getElementById("wtpForm");
 const simulateBtn = document.getElementById("simulateBtn");
 const resultEl = document.getElementById("bdmResult");
 
-/* ADDED:
-   This hidden input is used to send compact WTP data back to oTree backend.
-   The goal is to support custom_export for the WTP dataset, while keeping the
-   original participant-facing CSV download behavior unchanged. */
-const hiddenWtpJson = document.getElementById("wtp_rows_json");
-
 function show(el) {
   if (el) el.classList.remove("hidden");
 }
@@ -304,14 +298,6 @@ simulateBtn?.addEventListener("click", () => {
     };
   });
 
-  /* ADDED:
-     Write the backend payload into the hidden input so the page submission
-     can send WTP data to the backend. This is the only required frontend
-     change for enabling the WTP custom export. */
-  if (hiddenWtpJson) {
-    hiddenWtpJson.value = JSON.stringify(backendRows);
-  }
-
   if (resultEl) {
     resultEl.innerHTML = `
       <div class="alert alert-info">
@@ -324,7 +310,7 @@ simulateBtn?.addEventListener("click", () => {
         <div>Remaining cash: $${remaining.toFixed(2)}</div>
       </div>
     `;
-    document.getElementById("wtpDataJson").value = JSON.stringify(rows);
+    document.getElementById("wtpDataJson").value = JSON.stringify(backendRows);
 
     const nextBtn = document.getElementById("nextBtn");
     if (nextBtn) nextBtn.disabled = false;

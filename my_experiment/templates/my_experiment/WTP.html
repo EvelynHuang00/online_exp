@@ -12,10 +12,8 @@ Willingness to Pay
 <div class="container">
   <p>Enter your maximum willingness to pay for each snack.</p>
 
-  <!-- BDM practice renders here first -->
   <div id="bdmPractice"></div>
 
-  <!-- Main WTP block is hidden until practice completes -->
   <div id="wtpMain" class="hidden">
     <div id="wtpForm">
         <p>Click the blue bars to reveal the sliders.</p>
@@ -23,13 +21,8 @@ Willingness to Pay
     </div>
 
     <div id="bdmResult" style="margin-top:16px;"></div>
-    <input type="hidden" name="wtp_data_json" id="wtpDataJson" value="">
 
-    <!-- ADDED:
-         Hidden input for sending WTP rows back to the backend.
-         Purpose: enable custom_export of the WTP dataset without changing the
-         existing participant-facing interaction flow. -->
-    <input type="hidden" name="wtp_rows_json" id="wtp_rows_json">
+    <input type="hidden" name="wtp_data_json" id="wtpDataJson" value="">
 
     <section id="end" style="margin-top:16px;">
       <p id="simulateHelp" style="margin-top:16px;">
@@ -39,6 +32,7 @@ Willingness to Pay
       <button type="button" id="simulateBtn" class="btn btn-primary">
          Simulate Auction
       </button>
+
       <div style="margin-top:12px;">
         <button class="otree-btn-next btn btn-primary" id="nextBtn" type="submit" disabled>Next</button>
       </div>
