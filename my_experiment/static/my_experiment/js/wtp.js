@@ -10,7 +10,6 @@ const session_id = localStorage.getItem("session_id") || "session_001";
 // <div id="wtpMain" class="hidden">
 //   <div id="wtpForm"></div>
 //   <div id="bdmResult"></div>
-//   <input type="hidden" name="wtp_rows_json" id="wtp_rows_json">
 //   <button type="button" id="downloadWtpBtn">Download WTP CSV</button>
 //   <button class="otree-btn-next" id="nextBtn" disabled>Next</button>
 // </div>
@@ -19,14 +18,8 @@ const practiceEl = document.getElementById("bdmPractice");
 const mainEl = document.getElementById("wtpMain");
 
 const container = document.getElementById("wtpForm");
-const downloadBtn = document.getElementById("downloadWtpBtn");
+const simulateBtn = document.getElementById("simulateBtn");
 const resultEl = document.getElementById("bdmResult");
-
-/* ADDED:
-   This hidden input is used to send compact WTP data back to oTree backend.
-   The goal is to support custom_export for the WTP dataset, while keeping the
-   original participant-facing CSV download behavior unchanged. */
-const hiddenWtpJson = document.getElementById("wtp_rows_json");
 
 function show(el) {
   if (el) el.classList.remove("hidden");
@@ -57,7 +50,15 @@ function drawPrice() {
   return Number((k * step).toFixed(2));
 }
 
+
+function randomOnGrid(min, max, step) {
+  const nSteps = Math.round((max - min) / step);
+  const k = Math.floor(Math.random() * (nSteps + 1));
+  return Number((min + k * step).toFixed(2));
+}
+
 // Slider settings
+
 function randomSliderValue() {
   const nSteps = Math.round((SLIDER_MAX - SLIDER_MIN) / SLIDER_STEP);
   const k = Math.floor(Math.random() * (nSteps + 1));
@@ -70,54 +71,39 @@ const SLIDER_STEP = 0.05;
 
 // -------------------- Main WTP table (sliders) --------------------
 function buildMainWTPTable() {
-  container.innerHTML = `
-    <table class="table">
-      <thead>
-        <tr>
-          <th>Snack</th>
-          <th>Your bid</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${SNACKS.map(
-          (s) => `
-          <tr>
-            <td>${s.label}</td>
-            <td>
-              <div style="display:flex; gap:12px; align-items:center;">
-                <input
-                  type="range"
-                  min="${SLIDER_MIN}"
-                  max="${SLIDER_MAX}"
-                  step="${SLIDER_STEP}"
-                  value="${randomSliderValue()}"
-                  id="bid_${s.id}"
-                  class="form-range"
-                />
-                <span id="bidval_${s.id}" style="min-width:72px; text-align:right;">$0.00</span>
-              </div>
-            </td>
-          </tr>
-        `
-        ).join("")}
-      </tbody>
-    </table>
-  `;
+  const slidersHere = document.getElementById("sliders_here");
+  if (!slidersHere) return;
 
-  // Attach slider UI updates
+  slidersHere.innerHTML = "";
+
+  const min = 0;
+  const max = 1.0;
+  const step = 0.05;
+
   for (const s of SNACKS) {
-    const slider = document.getElementById(`bid_${s.id}`);
-    const label = document.getElementById(`bidval_${s.id}`);
-    if (!slider || !label) continue;
+    // Create a wrapper for each snack+slider so they stay together
+    const block = document.createElement("div");
+    block.style.margin = "18px 0";
 
-    const update = () => {
-      const v = Number(slider.value);
-      label.textContent = `$${v.toFixed(2)}`;
-      setNextEnabled(validateAllBids());
-    };
+    // Snack label (above the slider)
+    const label = document.createElement("div");
+    label.style.fontWeight = "600";
+    label.style.marginBottom = "6px";
+    label.textContent = s.label;
 
-    slider.addEventListener("input", update);
-    update(); // initialize
+    // Slider container
+    const sliderDiv = document.createElement("div");
+
+    block.appendChild(label);
+    block.appendChild(sliderDiv);
+    slidersHere.appendChild(block);
+
+    const fieldName = `bid_${s.id}`;
+    const slider = new mgslider(fieldName, min, max, step);
+    slider.recall = true;
+
+    // Print slider INSIDE this snack's container
+    slider.print(sliderDiv);
   }
 }
 
@@ -142,11 +128,13 @@ function validateAllBids() {
 // -------------------- Collect bids (sliders) --------------------
 function collectBids() {
   const bids = [];
-  for (const s of SNACKS) {
-    const el = document.getElementById(`bid_${s.id}`);
-    if (!el) return { ok: false, msg: `Missing slider for: ${s.label}` };
 
-    const bid = Number(el.value);
+  for (const s of SNACKS) {
+    const fieldName = `bid_${s.id}`;
+    const input = document.querySelector(`input[name="${fieldName}"]`);
+    if (!input) return { ok: false, msg: `Missing slider input for: ${s.label}` };
+
+    const bid = Number(input.value);
     if (!Number.isFinite(bid) || bid < 0) return { ok: false, msg: `Invalid bid for: ${s.label}` };
 
     bids.push({
@@ -155,6 +143,7 @@ function collectBids() {
       bid: Number(bid.toFixed(2)),
     });
   }
+
   return { ok: true, bids };
 }
 
@@ -249,7 +238,7 @@ function showMain() {
 }
 
 // -------------------- Main WTP: download --------------------
-downloadBtn?.addEventListener("click", () => {
+simulateBtn?.addEventListener("click", () => {
   const out = collectBids();
   if (!out.ok) {
     alert(out.msg);
@@ -290,33 +279,6 @@ downloadBtn?.addEventListener("click", () => {
     };
   });
 
-  /* ADDED:
-     Build a compact backend payload for custom_export.
-     This does NOT change the existing local CSV download format.
-     It only adds a JSON copy that oTree can store in Player.wtp_rows_json.
-
-     Target exported columns:
-     session_id, subject_id, snack_id, bid_value, price_draw
-
-     We keep price_draw only for the binding snack, and leave it blank for the
-     non-binding snacks. */
-  const backendRows = out.bids.map((r) => {
-    const isBinding = r.snack_id === binding.id;
-    return {
-      snack_id: r.snack_id,
-      bid_value: r.bid,
-      price_draw: isBinding ? Number(price_draw.toFixed(2)) : "",
-    };
-  });
-
-  /* ADDED:
-     Write the backend payload into the hidden input so the page submission
-     can send WTP data to the backend. This is the only required frontend
-     change for enabling the WTP custom export. */
-  if (hiddenWtpJson) {
-    hiddenWtpJson.value = JSON.stringify(backendRows);
-  }
-
   if (resultEl) {
     resultEl.innerHTML = `
       <div class="alert alert-info">
@@ -329,9 +291,12 @@ downloadBtn?.addEventListener("click", () => {
         <div>Remaining cash: $${remaining.toFixed(2)}</div>
       </div>
     `;
+    document.getElementById("wtpDataJson").value = JSON.stringify(rows);
+
+    const nextBtn = document.getElementById("nextBtn");
+    if (nextBtn) nextBtn.disabled = false;
   }
 
-  downloadCSV(rows, `wtp_subject_${subject_id}.csv`);
 });
 
 // -------------------- Start --------------------

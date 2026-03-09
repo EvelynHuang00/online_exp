@@ -1,89 +1,108 @@
 import json
 import random
 from datetime import datetime, timezone
-from collections import defaultdict
+
 from otree.api import *
 
 from .allocation import run_allocation
 
 
-doc = "Snack allocation experiment (backend)."
+doc = """
+Snack allocation experiment.
+
+Each participant first reports willingness to pay (WTP) for six snacks,
+then completes a binary choice task over snack pairs.
+
+The backend uses the binary choices to infer a strict ranking over snacks.
+A group-level allocation rule (currently RSD) then assigns one snack to
+each participant based on the inferred rankings.
+
+Although the frontend submits compact JSON blobs, the backend also stores
+structured rows through ExtraModel tables so that exports remain stable
+and easy to analyze.
+"""
 
 
-# -------------------
+# =============================================================================
 # CONSTANTS
-# -------------------
+# =============================================================================
 class C(BaseConstants):
     NAME_IN_URL = "my_experiment"
     PLAYERS_PER_GROUP = 6
     NUM_ROUNDS = 1
 
-    # Switch allocation algorithm here:
-    # "rsd" now; later we can add "da" without rewriting page logic.
+    # The allocation rule currently used by the experiment.
+    # Other rules can be added through the allocation module.
     ALLOCATION_ALGO = "rsd"
 
-    # Version string for your experiment design / schema.
-    # Update this whenever you change data format or logic.
-    DESIGN_VERSION = "v2026-03-06"
+    # A simple label that helps identify the current data contract.
+    DESIGN_VERSION = "main-fields-backend-rsd"
 
-    # IMPORTANT: Keep snack IDs consistent across frontend/back-end.
+    # These IDs must match the item IDs used in the frontend files.
     SNACK_IDS = ["snack1", "snack2", "snack3", "snack4", "snack5", "snack6"]
 
 
-# -------------------
-# MODELS
-# -------------------
+# =============================================================================
+# CORE OTree MODELS
+# =============================================================================
 class Subsession(BaseSubsession):
     pass
 
 
 class Group(BaseGroup):
-    # Seed used to make allocation reproducible within a session.
+    # Used to make allocation reproducible within a session.
     allocation_seed = models.IntegerField(blank=True)
 
-    # Seed used to make ranking tie-breaking reproducible within a session.
+    # Used to make ranking tie-breaking reproducible within a session.
     ranking_seed = models.IntegerField(blank=True)
 
 
 class Player(BasePlayer):
-    # Raw trial-level data from frontend JS (serialized JSON string).
-    # Fallback only (if you do not implement real-time trial saving).
-    binary_rows_json = models.LongStringField(blank=True)
+    # -------------------------------------------------------------------------
+    # Raw frontend payloads
+    # -------------------------------------------------------------------------
+    # Main-task binary choices submitted by the frontend as one JSON list.
+    # This is the only binary-task field expected by this version of the app.
+    choice_data_json = models.LongStringField(blank=True)
 
-    # WTP rows from frontend JS (serialized JSON string).
-    # Each element should be a dict with at least:
-    # {"snack_id": "...", "bid_value": 1.23, "price_draw": 0.50}
-    wtp_rows_json = models.LongStringField(blank=True)
+    # WTP rows submitted by the frontend as one JSON list.
+    # This is the only WTP field expected by this version of the app.
+    wtp_data_json = models.LongStringField(blank=True)
 
-    # Inferred strict ranking over snacks, stored as JSON string.
+    # -------------------------------------------------------------------------
+    # Derived backend results
+    # -------------------------------------------------------------------------
+    # Final inferred strict ranking over all snacks, stored as JSON.
     inferred_ranking_json = models.LongStringField(blank=True)
 
-    # Debug: win counts per snack, stored as JSON string.
+    # Win counts used to construct the inferred ranking.
     win_counts_json = models.LongStringField(blank=True)
 
-    # Dataset 2 rows (snack-level; 6 rows per participant), stored as JSON string.
-    # Each element is a dict:
-    # {session_id, subject_id, snack_id, win_count, tie_group_id, final_rank}
+    # One structured ranking row per snack, stored as JSON for convenient export.
     ranking_rows_json = models.LongStringField(blank=True)
 
-    # Final snack assigned by the allocation mechanism (RSD for now).
+    # Final assignment result produced by the allocation rule.
     assigned_snack = models.StringField(blank=True)
 
-    # Position in the RSD order (1 = first dictator).
+    # Participant's position in the RSD order.
     rsd_order = models.IntegerField(blank=True)
 
-    # Assigned snack's rank position (1..6) in participant's inferred ranking.
+    # Position of the assigned snack in the participant's inferred ranking.
     assigned_rank_pos = models.IntegerField(blank=True)
 
 
+# =============================================================================
+# EXTRA TABLES
+# =============================================================================
 class ChoiceTrial(ExtraModel):
     """
-    Trial-level storage for binary choice task (recommended for reliability).
+    One row per binary-choice trial.
 
-    If the frontend sends each trial via liveSend, you will get a durable
-    database record per trial. This prevents losing all data if the browser
-    crashes before submitting the final page.
+    The frontend may send trials one at a time through liveSend().
+    Storing them here helps prevent data loss if the page closes before the
+    full JSON payload is submitted at the end of the task.
     """
+
     player = models.Link(Player)
 
     session_id = models.StringField()
@@ -99,16 +118,18 @@ class ChoiceTrial(ExtraModel):
     rt_ms = models.FloatField(blank=True)
 
     is_timeout = models.BooleanField(initial=False)
-
-    # Optional: useful for debugging latency/network issues.
     timestamp_utc = models.StringField(blank=True)
 
 
 class WTPRow(ExtraModel):
     """
-    Snack-level storage for WTP (C1 + price_draw):
-    session_id, subject_id, snack_id, bid_value, price_draw
+    One row per snack for the WTP task.
+
+    The frontend may include many display-oriented columns, but the backend
+    stores only the fields needed for later analysis:
+    session_id, subject_id, snack_id, bid_value, price_draw.
     """
+
     player = models.Link(Player)
 
     session_id = models.StringField()
@@ -119,137 +140,252 @@ class WTPRow(ExtraModel):
     price_draw = models.FloatField(blank=True)
 
 
-# -------------------
-# HELPERS
-# -------------------
+# =============================================================================
+# GENERAL HELPERS
+# =============================================================================
 def _utc_now_iso():
+    """Return the current UTC time in ISO format."""
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _parse_json_list(s):
-    """Parse a JSON string into list[dict]. Return [] on any failure."""
-    if not s:
+def _parse_json_list(raw_value):
+    """
+    Parse a JSON string into a list.
+
+    The frontend stores several datasets as JSON strings. For robustness, this
+    helper returns an empty list if the field is empty, malformed, or not a list.
+    """
+    if not raw_value:
         return []
+
     try:
-        x = json.loads(s)
-        return x if isinstance(x, list) else []
+        parsed = json.loads(raw_value)
+        return parsed if isinstance(parsed, list) else []
     except Exception:
         return []
 
 
-def _filter_valid_main_trials(rows):
-    """
-    Keep only VALID main-task rows:
-    - is_practice == 0 (or missing -> treated as 0)
-    - is_timeout == 0
-    - chosen_item_id non-empty
-    """
-    kept = []
-    for r in rows:
-        if int(r.get("is_practice", 0) or 0) != 0:
-            continue
-        if int(r.get("is_timeout", 0) or 0) != 0:
-            continue
-        chosen = (r.get("chosen_item_id") or "").strip()
-        if chosen == "":
-            continue
-        kept.append(r)
-    return kept
-
-
-def _infer_ranking_win_count_random_ties(*, valid_rows, snack_ids, seed):
-    """
-    Win-count scoring + random tie-breaking.
-
-    Args:
-        valid_rows: list[dict], each dict must include chosen_item_id
-        snack_ids: list[str]
-        seed: int, for reproducible randomization
-
-    Returns:
-        ranking (list[str]): strict best->worst
-        win_counts (dict[str,int])
-        tie_group_id_by_snack (dict[str,int])
-        final_rank_by_snack (dict[str,int])
-    """
-    rng = random.Random(int(seed))
-
-    # 1) win-counts
-    win_counts = {sid: 0 for sid in snack_ids}
-    for r in valid_rows:
-        chosen = (r.get("chosen_item_id") or "").strip()
-        if chosen in win_counts:
-            win_counts[chosen] += 1
-
-    # 2) tie groups by identical win-count, ordered by score desc.
-    unique_scores = sorted({win_counts[sid] for sid in snack_ids}, reverse=True)
-    tie_group_id_by_score = {score: idx + 1 for idx, score in enumerate(unique_scores)}
-    tie_group_id_by_snack = {sid: tie_group_id_by_score[win_counts[sid]] for sid in snack_ids}
-
-    # 3) strict ranking: randomize within each tie group
-    ranking = []
-    for score in unique_scores:
-        members = [sid for sid in snack_ids if win_counts[sid] == score]
-        rng.shuffle(members)
-        ranking.extend(members)
-
-    final_rank_by_snack = {sid: idx + 1 for idx, sid in enumerate(ranking)}
-    return ranking, win_counts, tie_group_id_by_snack, final_rank_by_snack
-
-
 def _get_subject_id(player: Player) -> str:
     """
-    Subject ID for exports. Prefer participant.code because it's globally unique.
+    Return a participant-level identifier suitable for exports.
+
+    participant.code is preferred because it is stable and unique within oTree.
     """
     return getattr(player.participant, "code", None) or f"P{player.id_in_group}"
 
 
 def _get_session_id(player: Player) -> str:
     """
-    Session ID for exports. Use session.code (stable unique id in oTree).
+    Return a session-level identifier suitable for exports.
+
+    session.code is preferred because it is stable and unique within oTree.
     """
     return getattr(player.session, "code", None) or "UNKNOWN_SESSION"
 
 
+# =============================================================================
+# INPUT READERS
+# =============================================================================
+def _read_binary_rows_from_player(player: Player):
+    """
+    Read binary-task rows from the main frontend field.
+
+    The frontend is expected to submit a JSON list through choice_data_json.
+    """
+    return _parse_json_list(player.choice_data_json)
+
+
+def _read_wtp_rows_from_player(player: Player):
+    """
+    Read WTP rows from the main frontend field.
+
+    The frontend is expected to submit a JSON list through wtp_data_json.
+    """
+    return _parse_json_list(player.wtp_data_json)
+
+
+def _normalize_wtp_rows(raw_rows):
+    """
+    Convert raw frontend WTP rows into one compact backend schema.
+
+    The frontend may include many display-oriented fields such as:
+        snack_label, payment, remaining_cash, purchase_decision, etc.
+
+    The backend keeps only the fields needed downstream:
+        snack_id, bid_value, price_draw
+
+    Expected frontend row shape:
+        {
+            "snack_id": "snack1",
+            "bid": "0.75",
+            "price_draw": "0.50",
+            ...
+        }
+
+    Returned backend row shape:
+        {
+            "snack_id": "snack1",
+            "bid_value": 0.75,
+            "price_draw": 0.50 or None
+        }
+    """
+    normalized = []
+
+    for row in raw_rows:
+        if not isinstance(row, dict):
+            continue
+
+        snack_id = str(row.get("snack_id", "") or "").strip()
+        if not snack_id:
+            continue
+
+        bid_raw = row.get("bid", None)
+        try:
+            bid_value = float(bid_raw)
+        except Exception:
+            continue
+
+        price_raw = row.get("price_draw", None)
+        try:
+            price_draw = float(price_raw) if price_raw not in (None, "") else None
+        except Exception:
+            price_draw = None
+
+        normalized.append(
+            dict(
+                snack_id=snack_id,
+                bid_value=bid_value,
+                price_draw=price_draw,
+            )
+        )
+
+    return normalized
+
+
+# =============================================================================
+# RANKING HELPERS
+# =============================================================================
+def _filter_valid_choice_rows(rows):
+    """
+    Keep only valid non-practice rows for ranking inference.
+
+    The ranking logic ignores:
+    - practice trials
+    - timed-out trials
+    - rows without a recorded choice
+    """
+    kept = []
+
+    for row in rows:
+        if int(row.get("is_practice", 0) or 0) != 0:
+            continue
+
+        if int(row.get("is_timeout", 0) or 0) != 0:
+            continue
+
+        chosen_item = (row.get("chosen_item_id") or "").strip()
+        if chosen_item == "":
+            continue
+
+        kept.append(row)
+
+    return kept
+
+
+def _infer_ranking_win_count_random_ties(*, valid_rows, snack_ids, seed):
+    """
+    Infer a strict ranking from binary choices.
+
+    Step 1:
+        Count how many times each snack was chosen.
+
+    Step 2:
+        Sort snacks by win count from high to low.
+
+    Step 3:
+        If multiple snacks have the same win count, break ties randomly
+        using a seeded RNG so results remain reproducible.
+
+    Returns:
+        ranking                 list of snack IDs from best to worst
+        win_counts              dict snack_id -> number of wins
+        tie_group_id_by_snack   dict snack_id -> tie tier label
+        final_rank_by_snack     dict snack_id -> final rank position
+    """
+    rng = random.Random(int(seed))
+
+    win_counts = {snack_id: 0 for snack_id in snack_ids}
+    for row in valid_rows:
+        chosen = (row.get("chosen_item_id") or "").strip()
+        if chosen in win_counts:
+            win_counts[chosen] += 1
+
+    unique_scores = sorted({win_counts[sid] for sid in snack_ids}, reverse=True)
+
+    tie_group_id_by_score = {
+        score: idx + 1 for idx, score in enumerate(unique_scores)
+    }
+
+    tie_group_id_by_snack = {
+        sid: tie_group_id_by_score[win_counts[sid]]
+        for sid in snack_ids
+    }
+
+    ranking = []
+    for score in unique_scores:
+        members = [sid for sid in snack_ids if win_counts[sid] == score]
+        rng.shuffle(members)
+        ranking.extend(members)
+
+    final_rank_by_snack = {
+        sid: idx + 1 for idx, sid in enumerate(ranking)
+    }
+
+    return ranking, win_counts, tie_group_id_by_snack, final_rank_by_snack
+
+
 def _read_trials_for_player(player: Player):
     """
-    Preferred: read from ChoiceTrial table.
-    Fallback: read from player.binary_rows_json (legacy approach).
-    Output: list of dict rows in the SAME shape as frontend row dicts
-            used for inference: must contain chosen_item_id, is_practice, is_timeout, etc.
+    Read binary-choice data in one ranking-compatible format.
+
+    Preferred source:
+        ChoiceTrial ExtraModel rows
+
+    Fallback source:
+        choice_data_json submitted at the end of the task
+
+    This lets the backend work even if live trial saving was not used or if
+    only the final page submission is available.
     """
     session_id = _get_session_id(player)
     subject_id = _get_subject_id(player)
 
     trials = ChoiceTrial.filter(player=player)
     if trials:
-        # Convert ChoiceTrial -> row dict compatible with ranking inference.
         rows = []
-        for t in sorted(trials, key=lambda x: x.trial_index):
+        for trial in sorted(trials, key=lambda x: x.trial_index):
             rows.append(
                 dict(
                     is_practice=0,
-                    is_timeout=1 if t.is_timeout else 0,
-                    chosen_item_id=t.chosen_item or "",
-                    # optional fields kept if you want:
-                    left_item_id=t.left_item_id,
-                    right_item_id=t.right_item_id,
-                    rt_ms=t.rt_ms,
-                    pair_id=t.pair_id,
-                    trial_index=t.trial_index,
+                    is_timeout=1 if trial.is_timeout else 0,
+                    chosen_item_id=trial.chosen_item or "",
+                    left_item_id=trial.left_item_id,
+                    right_item_id=trial.right_item_id,
+                    rt_ms=trial.rt_ms,
+                    pair_id=trial.pair_id,
+                    trial_index=trial.trial_index,
                     session_id=session_id,
                     subject_id=subject_id,
                 )
             )
         return rows
 
-    # Fallback to JSON stored at end of MyPage submission
-    return _parse_json_list(player.binary_rows_json)
+    return _read_binary_rows_from_player(player)
 
 
-# -------------------
+# =============================================================================
 # PAGES
-# -------------------
+# =============================================================================
 class Consent(Page):
     pass
 
@@ -260,12 +396,13 @@ class InstructionsBDM(Page):
 
 class WTP(Page):
     """
-    WTP is currently rendered by JS.
-    To export WTP rows from server, the JS must store results into a hidden
-    input bound to Player.wtp_rows_json, then submit this page.
+    WTP page.
+
+    The frontend renders the sliders and stores all WTP rows as a JSON list
+    in the single hidden field wtp_data_json.
     """
     form_model = "player"
-    form_fields = ["wtp_rows_json"]
+    form_fields = ["wtp_data_json"]
 
 
 class InstructionsBinary(Page):
@@ -274,38 +411,35 @@ class InstructionsBinary(Page):
 
 class MyPage(Page):
     """
-    Binary-choice task page.
+    Binary choice task page.
 
-    Fallback storage:
-    - JS writes all trial rows into a hidden input (binary_rows_json)
-    - On submit, the full JSON is stored into Player.binary_rows_json
-
-    Recommended robust storage:
-    - JS calls liveSend() for each trial, which appends to ChoiceTrial (DB)
+    The frontend stores the final task output in the single hidden field
+    choice_data_json. The page also supports live trial saving through
+    liveSend() so the backend can keep trial-level rows as the task unfolds.
     """
     form_model = "player"
-    form_fields = ["binary_rows_json"]
+    form_fields = ["choice_data_json"]
 
     @staticmethod
     def live_method(player: Player, data):
         """
-        Real-time trial saving endpoint.
+        Save one binary-choice trial in real time.
 
-        Expected payload example from JS (per trial):
-        {
-          "type": "choice_trial",
-          "trial_index": 1,
-          "pair_id": "pair_01",
-          "left_item_id": "snack1",
-          "right_item_id": "snack4",
-          "chosen_item": "snack4",     # empty string if timeout
-          "rt_ms": 1532,
-          "is_timeout": false,
-          "timestamp_utc": "2026-03-05T12:34:56Z"  # optional
-        }
+        Expected payload example:
+            {
+                "type": "choice_trial",
+                "trial_index": 1,
+                "pair_id": "pair_01",
+                "left_item_id": "snack1",
+                "right_item_id": "snack4",
+                "chosen_item": "snack4",
+                "rt_ms": 1532,
+                "is_timeout": false,
+                "timestamp_utc": "2026-03-05T12:34:56Z"
+            }
 
-        You should also include a client-generated unique event id if you want
-        deduplication. For now, we assume (player, trial_index) is unique.
+        Duplicate trial indices are ignored so that accidental resubmission
+        does not create repeated rows.
         """
         if not isinstance(data, dict):
             return
@@ -316,7 +450,6 @@ class MyPage(Page):
         session_id = _get_session_id(player)
         subject_id = _get_subject_id(player)
 
-        # Basic validation / normalization
         trial_index = int(data.get("trial_index", 0) or 0)
         if trial_index <= 0:
             return
@@ -329,13 +462,12 @@ class MyPage(Page):
         rt_ms = data.get("rt_ms", None)
 
         try:
-            rt_ms = float(rt_ms) if rt_ms is not None and rt_ms != "" else None
+            rt_ms = float(rt_ms) if rt_ms not in (None, "") else None
         except Exception:
             rt_ms = None
 
         timestamp_utc = str(data.get("timestamp_utc", "") or "")
 
-        # Dedup: avoid inserting the same (player, trial_index) twice
         existing = ChoiceTrial.filter(player=player, trial_index=trial_index)
         if existing:
             return dict(ok=True, dedup=True)
@@ -358,48 +490,45 @@ class MyPage(Page):
 
 class ResultsWaitPage(WaitPage):
     """
-    After all 6 participants arrive:
-    1) infer each participant's ranking (win-count + random ties)
-    2) run allocation (RSD now)
-    3) store assignment results
-    4) store WTP rows into ExtraModel (if wtp_rows_json provided)
+    Once all six players arrive, the backend performs the full group-level
+    computation:
+
+    1) Save each participant's WTP rows in structured form.
+    2) Infer each participant's ranking from binary choices.
+    3) Run the allocation rule.
+    4) Store each participant's final assignment.
     """
 
     def after_all_players_arrive(self):
         players = self.group.get_players()
 
-        # Ensure seeds exist so results are reproducible.
         if self.group.field_maybe_none("ranking_seed") is None:
             self.group.ranking_seed = random.randint(1, 10_000_000)
+
         if self.group.field_maybe_none("allocation_seed") is None:
             self.group.allocation_seed = random.randint(1, 10_000_000)
 
-        # ---- 0) Persist WTP rows (if page submitted them) ----
-        # Note: This is safe even if already inserted; we dedup by (player, snack_id).
-        for p in players:
-            session_id = _get_session_id(p)
-            subject_id = _get_subject_id(p)
+        # ---------------------------------------------------------------------
+        # 1) Persist WTP rows
+        # ---------------------------------------------------------------------
+        for player in players:
+            session_id = _get_session_id(player)
+            subject_id = _get_subject_id(player)
 
-            wtp_rows = _parse_json_list(p.wtp_rows_json)
-            for r in wtp_rows:
-                snack_id = str(r.get("snack_id", "") or "")
-                if snack_id == "":
-                    continue
-                try:
-                    bid_value = float(r.get("bid_value"))
-                except Exception:
-                    continue
-                price_draw = r.get("price_draw", None)
-                try:
-                    price_draw = float(price_draw) if price_draw not in (None, "") else None
-                except Exception:
-                    price_draw = None
+            raw_wtp_rows = _read_wtp_rows_from_player(player)
+            wtp_rows = _normalize_wtp_rows(raw_wtp_rows)
 
-                if WTPRow.filter(player=p, snack_id=snack_id):
+            for row in wtp_rows:
+                snack_id = row["snack_id"]
+                bid_value = row["bid_value"]
+                price_draw = row["price_draw"]
+
+                # Avoid duplicate writes if this page is revisited.
+                if WTPRow.filter(player=player, snack_id=snack_id):
                     continue
 
                 WTPRow.create(
-                    player=p,
+                    player=player,
                     session_id=session_id,
                     subject_id=subject_id,
                     snack_id=snack_id,
@@ -407,18 +536,20 @@ class ResultsWaitPage(WaitPage):
                     price_draw=price_draw,
                 )
 
-        # ---- 1) Infer rankings ----
+        # ---------------------------------------------------------------------
+        # 2) Infer rankings from binary choices
+        # ---------------------------------------------------------------------
         rankings = {}
-        for p in players:
-            session_id = _get_session_id(p)
-            subject_id = _get_subject_id(p)
 
-            raw_rows = _read_trials_for_player(p)
-            valid_rows = _filter_valid_main_trials(raw_rows)
+        for player in players:
+            session_id = _get_session_id(player)
+            subject_id = _get_subject_id(player)
 
-            # Derive a per-player seed so tie-breaking differs across players
-            # but remains reproducible within the session.
-            per_player_seed = int(self.group.ranking_seed) * 100 + int(p.id_in_group)
+            raw_rows = _read_trials_for_player(player)
+            valid_rows = _filter_valid_choice_rows(raw_rows)
+
+            # Each player gets a deterministic seed derived from the group seed.
+            per_player_seed = int(self.group.ranking_seed) * 100 + int(player.id_in_group)
 
             ranking, win_counts, tie_group_id_by_snack, final_rank_by_snack = (
                 _infer_ranking_win_count_random_ties(
@@ -428,7 +559,6 @@ class ResultsWaitPage(WaitPage):
                 )
             )
 
-            # Build Dataset 2 rows (6 rows per participant)
             ranking_rows = []
             for snack_id in C.SNACK_IDS:
                 ranking_rows.append(
@@ -442,64 +572,69 @@ class ResultsWaitPage(WaitPage):
                     )
                 )
 
-            p.inferred_ranking_json = json.dumps(ranking)
-            p.win_counts_json = json.dumps(win_counts)
-            p.ranking_rows_json = json.dumps(ranking_rows)
+            player.inferred_ranking_json = json.dumps(ranking)
+            player.win_counts_json = json.dumps(win_counts)
+            player.ranking_rows_json = json.dumps(ranking_rows)
 
-            rankings[p.id_in_group] = ranking
+            rankings[player.id_in_group] = ranking
 
-        # ---- 2) Allocation ----
+        # ---------------------------------------------------------------------
+        # 3) Run allocation
+        # ---------------------------------------------------------------------
         assignment, order, meta = run_allocation(
             algo_name=C.ALLOCATION_ALGO,
-            player_ids=[p.id_in_group for p in players],
+            player_ids=[player.id_in_group for player in players],
             rankings=rankings,
             seed=self.group.allocation_seed,
         )
 
-        # ---- 3) Store allocation results + assigned_rank_pos ----
-        for p in players:
-            p.assigned_snack = assignment.get(p.id_in_group, "")
+        # ---------------------------------------------------------------------
+        # 4) Store allocation outputs
+        # ---------------------------------------------------------------------
+        for player in players:
+            player.assigned_snack = assignment.get(player.id_in_group, "")
 
-            # RSD order position
-            if order is not None and p.id_in_group in order:
-                p.rsd_order = order.index(p.id_in_group) + 1
+            if order is not None and player.id_in_group in order:
+                player.rsd_order = order.index(player.id_in_group) + 1
             else:
-                p.rsd_order = None
+                player.rsd_order = None
 
-            # assigned_rank_pos (1..6) from inferred ranking
             try:
-                ranking = json.loads(p.inferred_ranking_json or "[]")
-                if p.assigned_snack in ranking:
-                    p.assigned_rank_pos = ranking.index(p.assigned_snack) + 1
+                ranking = json.loads(player.inferred_ranking_json or "[]")
+                if player.assigned_snack in ranking:
+                    player.assigned_rank_pos = ranking.index(player.assigned_snack) + 1
                 else:
-                    p.assigned_rank_pos = None
+                    player.assigned_rank_pos = None
             except Exception:
-                p.assigned_rank_pos = None
+                player.assigned_rank_pos = None
 
 
 class Results(Page):
-    def vars_for_template(self):
+    """
+    Simple result page for participant-facing feedback and debugging.
+    """
+
+    @staticmethod
+    def vars_for_template(player: Player):
         try:
-            ranking = json.loads(self.inferred_ranking_json or "[]")
+            ranking = json.loads(player.inferred_ranking_json or "[]")
         except Exception:
             ranking = []
 
         try:
-            win_counts = json.loads(self.win_counts_json or "{}")
+            win_counts = json.loads(player.win_counts_json or "{}")
         except Exception:
             win_counts = {}
 
-        return dict(
-            # ADDED:
-            # Keep this debug field because Results.html still references it.
-            # It shows the raw JSON length of submitted binary trial data.
-            debug_json_len=len(self.binary_rows_json or ""),
+        debug_source = player.choice_data_json or ""
 
+        return dict(
+            debug_json_len=len(debug_source),
             inferred_ranking=ranking,
             win_counts=win_counts,
-            assigned_snack=self.assigned_snack,
-            rsd_order=self.rsd_order,
-            assigned_rank_pos=self.assigned_rank_pos,
+            assigned_snack=player.assigned_snack,
+            rsd_order=player.rsd_order,
+            assigned_rank_pos=player.assigned_rank_pos,
             allocation_algo=C.ALLOCATION_ALGO,
         )
 
@@ -515,15 +650,12 @@ page_sequence = [
 ]
 
 
-# -------------------
-# CUSTOM EXPORTS (oTree 6+)
-# Each function produces ONE CSV table in Admin -> Data.
-# oTree supports multiple custom exports by defining multiple functions
-# whose names start with "custom_export". :contentReference[oaicite:1]{index=1}
-# -------------------
+# =============================================================================
+# CUSTOM EXPORTS
+# =============================================================================
 def custom_export_metadata_session(players):
     """
-    Session-level metadata: one row per session.
+    Export one row per session with metadata needed to interpret the dataset.
     """
     yield [
         "session_id",
@@ -538,35 +670,37 @@ def custom_export_metadata_session(players):
         "allocation_seed",
     ]
 
-    # We may be exporting multiple sessions in one file.
-    # So we group by session_id.
     seen = set()
-    for p in players:
-        sess_id = _get_session_id(p)
-        if sess_id in seen:
+    for player in players:
+        session_id = _get_session_id(player)
+        if session_id in seen:
             continue
-        seen.add(sess_id)
-        g = p.group
+        seen.add(session_id)
+
+        group = player.group
         yield [
-            sess_id,
+            session_id,
             _utc_now_iso(),
             C.NAME_IN_URL,
             C.DESIGN_VERSION,
             C.PLAYERS_PER_GROUP,
             "|".join(C.SNACK_IDS),
             "win_count_random_tiebreak",
-            g.ranking_seed,
+            group.ranking_seed,
             C.ALLOCATION_ALGO,
-            g.allocation_seed,
+            group.allocation_seed,
         ]
 
 
 def custom_export_choice_trials(players):
     """
-    Dataset 1: Binary Choice Trials (trial-level).
-    Columns (as you specified):
-    session_id, subject_id, trial_index, pair_id, left_item_id, right_item_id,
-    chosen_item, rt_ms, is_timeout
+    Export one row per binary-choice trial.
+
+    Preferred source:
+        ChoiceTrial ExtraModel rows
+
+    Fallback source:
+        choice_data_json submitted at the end of the task
     """
     yield [
         "session_id",
@@ -580,48 +714,43 @@ def custom_export_choice_trials(players):
         "is_timeout",
     ]
 
-    # Prefer ExtraModel ChoiceTrial; fallback to JSON if no ChoiceTrial exists.
-    for p in players:
-        sess_id = _get_session_id(p)
-        subj_id = _get_subject_id(p)
+    for player in players:
+        session_id = _get_session_id(player)
+        subject_id = _get_subject_id(player)
 
-        trials = ChoiceTrial.filter(player=p)
+        trials = ChoiceTrial.filter(player=player)
         if trials:
-            for t in sorted(trials, key=lambda x: x.trial_index):
+            for trial in sorted(trials, key=lambda x: x.trial_index):
                 yield [
-                    sess_id,
-                    subj_id,
-                    t.trial_index,
-                    t.pair_id,
-                    t.left_item_id,
-                    t.right_item_id,
-                    t.chosen_item,
-                    t.rt_ms,
-                    1 if t.is_timeout else 0,
+                    session_id,
+                    subject_id,
+                    trial.trial_index,
+                    trial.pair_id,
+                    trial.left_item_id,
+                    trial.right_item_id,
+                    trial.chosen_item,
+                    trial.rt_ms,
+                    1 if trial.is_timeout else 0,
                 ]
         else:
-            rows = _parse_json_list(p.binary_rows_json)
-            # If your JSON rows already contain these keys, we export them.
-            # Missing keys are exported as blank.
-            for r in rows:
+            rows = _read_binary_rows_from_player(player)
+            for row in rows:
                 yield [
-                    sess_id,
-                    subj_id,
-                    r.get("trial_index", ""),
-                    r.get("pair_id", ""),
-                    r.get("left_item_id", ""),
-                    r.get("right_item_id", ""),
-                    r.get("chosen_item_id", ""),
-                    r.get("rt_ms", ""),
-                    r.get("is_timeout", ""),
+                    session_id,
+                    subject_id,
+                    row.get("trial_index", ""),
+                    row.get("pair_id", ""),
+                    row.get("left_item_id", ""),
+                    row.get("right_item_id", ""),
+                    row.get("chosen_item_id", ""),
+                    row.get("rt_ms", ""),
+                    row.get("is_timeout", ""),
                 ]
 
 
 def custom_export_ranking(players):
     """
-    Dataset 2: ranking_subject_<subject_id>.csv equivalent, but as one merged table.
-    Columns:
-    session_id, subject_id, snack_id, win_count, tie_group_id, final_rank
+    Export one row per snack per participant for the inferred ranking.
     """
     yield [
         "session_id",
@@ -632,51 +761,62 @@ def custom_export_ranking(players):
         "final_rank",
     ]
 
-    for p in players:
-        rows = _parse_json_list(p.ranking_rows_json)
-        for r in rows:
+    for player in players:
+        rows = _parse_json_list(player.ranking_rows_json)
+        for row in rows:
             yield [
-                r.get("session_id", _get_session_id(p)),
-                r.get("subject_id", _get_subject_id(p)),
-                r.get("snack_id", ""),
-                r.get("win_count", ""),
-                r.get("tie_group_id", ""),
-                r.get("final_rank", ""),
+                row.get("session_id", _get_session_id(player)),
+                row.get("subject_id", _get_subject_id(player)),
+                row.get("snack_id", ""),
+                row.get("win_count", ""),
+                row.get("tie_group_id", ""),
+                row.get("final_rank", ""),
             ]
 
 
 def custom_export_wtp(players):
     """
-    Dataset 5 (C1 + price_draw):
-    session_id, subject_id, snack_id, bid_value, price_draw
+    Export one row per snack per participant for the WTP task.
+
+    Preferred source:
+        WTPRow ExtraModel rows
+
+    Fallback source:
+        wtp_data_json submitted by the frontend
     """
     yield ["session_id", "subject_id", "snack_id", "bid_value", "price_draw"]
 
-    # Prefer ExtraModel WTPRow (if submitted); fallback to wtp_rows_json if needed.
-    for p in players:
-        sess_id = _get_session_id(p)
-        subj_id = _get_subject_id(p)
+    for player in players:
+        session_id = _get_session_id(player)
+        subject_id = _get_subject_id(player)
 
-        rows = WTPRow.filter(player=p)
+        rows = WTPRow.filter(player=player)
         if rows:
-            for r in rows:
-                yield [sess_id, subj_id, r.snack_id, r.bid_value, r.price_draw]
-        else:
-            wtp_rows = _parse_json_list(p.wtp_rows_json)
-            for r in wtp_rows:
+            for row in rows:
                 yield [
-                    sess_id,
-                    subj_id,
-                    r.get("snack_id", ""),
-                    r.get("bid_value", ""),
-                    r.get("price_draw", ""),
+                    session_id,
+                    subject_id,
+                    row.snack_id,
+                    row.bid_value,
+                    row.price_draw,
+                ]
+        else:
+            raw_rows = _read_wtp_rows_from_player(player)
+            normalized_rows = _normalize_wtp_rows(raw_rows)
+
+            for row in normalized_rows:
+                yield [
+                    session_id,
+                    subject_id,
+                    row.get("snack_id", ""),
+                    row.get("bid_value", ""),
+                    row.get("price_draw", ""),
                 ]
 
 
 def custom_export_matching_rsd(players):
     """
-    Dataset 3 (RSD):
-    session_id, subject_id, serial_position, assigned_snack_id, assigned_rank_pos
+    Export the final RSD assignment for each participant.
     """
     yield [
         "session_id",
@@ -686,23 +826,22 @@ def custom_export_matching_rsd(players):
         "assigned_rank_pos",
     ]
 
-    for p in players:
+    for player in players:
         yield [
-            _get_session_id(p),
-            _get_subject_id(p),
-            p.rsd_order,
-            p.assigned_snack,
-            p.assigned_rank_pos,
+            _get_session_id(player),
+            _get_subject_id(player),
+            player.rsd_order,
+            player.assigned_snack,
+            player.assigned_rank_pos,
         ]
 
 
 def custom_export_matching_da(players):
     """
-    Dataset 4 (DA) placeholder:
-    session_id, subject_id, assigned_snack_id, assigned_rank_pos, consistency_index
+    Placeholder export for a future deferred acceptance implementation.
 
-    If DA is not implemented yet, export NA for these fields.
-    Later you can compute and store DA outcomes into Player fields or an ExtraModel.
+    The current app uses RSD, but keeping this export shape makes it easier
+    to add another allocation rule later without redesigning the export API.
     """
     yield [
         "session_id",
@@ -712,11 +851,11 @@ def custom_export_matching_da(players):
         "consistency_index",
     ]
 
-    for p in players:
+    for player in players:
         yield [
-            _get_session_id(p),
-            _get_subject_id(p),
-            "",   # assigned_snack_id for DA
-            "",   # assigned_rank_pos for DA
-            "",   # consistency_index
+            _get_session_id(player),
+            _get_subject_id(player),
+            "",
+            "",
+            "",
         ]

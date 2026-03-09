@@ -213,24 +213,9 @@ function finishTask() {
   hide(choiceEl);
   hide(fasterEl);
   show(endEl);
-
-  // Send ONLY main trials (exclude practice trials) to the backend.
-  //
-  // During the experiment we accumulate trial data in the array `rows`.
-  // Each entry contains stimulus IDs, participant choice, reaction time, etc.
-  //
-  // At the end of the task we:
-  //   1) remove practice trials
-  //   2) serialize the remaining rows into JSON
-  //   3) store the JSON string inside a hidden form field
-  //
-  // When the participant presses "Next", oTree submits the form and the JSON
-  // string is saved in Player.binary_rows_json on the backend.
-  const hidden = document.getElementById("binary_rows_json");
-  if (hidden) {
-    const mainRowsOut = rows.filter((r) => r.is_practice === 0);
-    hidden.value = JSON.stringify(mainRowsOut);
-  }
+  
+  const mainRowsOut = rows.filter(r => r.is_practice === 0);
+  document.getElementById("choiceDataJson").value = JSON.stringify(mainRowsOut);
 
   // Download ONLY main trials (exclude practice)
   downloadBtn.onclick = () => {

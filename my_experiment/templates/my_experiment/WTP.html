@@ -4,6 +4,10 @@
 Willingness to Pay
 {% endblock %}
 
+{% block styles %}
+<link rel="stylesheet" href="{% static 'global/mgslider.css' %}">
+{% endblock %}
+
 {% block content %}
 <div class="container">
   <p>Enter your maximum willingness to pay for each snack.</p>
@@ -13,20 +17,24 @@ Willingness to Pay
 
   <!-- Main WTP block is hidden until practice completes -->
   <div id="wtpMain" class="hidden">
-    <div id="wtpForm"></div>
+    <div id="wtpForm">
+        <p>Click the blue bars to reveal the sliders.</p>
+        <div id="sliders_here"></div>
+    </div>
 
     <div id="bdmResult" style="margin-top:16px;"></div>
-
-    <!-- ADDED:
-         Hidden input for sending WTP rows back to the backend.
-         Purpose: enable custom_export of the WTP dataset without changing the
-         existing participant-facing interaction flow. -->
-    <input type="hidden" name="wtp_rows_json" id="wtp_rows_json">
+    <input type="hidden" name="wtp_data_json" id="wtpDataJson" value="">
 
     <section id="end" style="margin-top:16px;">
-      <button type="button" id="downloadWtpBtn" class="btn btn-primary">Download WTP CSV</button>
+      <p id="simulateHelp" style="margin-top:16px;">
+         Click below to simulate what would happen in the BDM given your answers.
+      </p>
+
+      <button type="button" id="simulateBtn" class="btn btn-primary">
+         Simulate Auction
+      </button>
       <div style="margin-top:12px;">
-        <button class="otree-btn-next btn btn-primary" id="nextBtn" disabled>Next</button>
+        <button class="otree-btn-next btn btn-primary" id="nextBtn" type="submit" disabled>Next</button>
       </div>
     </section>
   </div>
@@ -34,5 +42,6 @@ Willingness to Pay
 {% endblock %}
 
 {% block scripts %}
+<script src="{% static 'global/mgslider.js' %}"></script>
 <script type="module" src="{% static 'my_experiment/js/wtp.js' %}"></script>
 {% endblock %}

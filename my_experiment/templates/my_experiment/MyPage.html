@@ -31,7 +31,6 @@
       </button>
     </div>
 
-
     <div id="timer"></div>
   </section>
 
@@ -41,23 +40,14 @@
 
   <section id="end" class="hidden">
     <h3>Task complete</h3>
+
     <button type="button" id="downloadBtn" class="btn btn-primary">Download CSV</button>
-    
-     <!--
-    Hidden field used to send the trial dataset from the frontend to the backend.
 
-    During the task, task.js stores each trial as an object in the array `rows`.
-    When the task ends, we serialize this array into a JSON string and place it
-    into this hidden input field. When the participant clicks "Next", oTree
-    submits the form and saves the JSON string into Player.binary_rows_json.
-
-    This mechanism allows the backend to access all behavioral data generated
-    in the JavaScript task.
-    -->
-    <input type="hidden" name="binary_rows_json" id="binary_rows_json">
+    <!-- IMPORTANT: hidden field must be inside the form -->
+    <input type="hidden" name="choice_data_json" id="choiceDataJson" value="">
 
     <div style="margin-top: 12px;">
-      {{ next_button }}
+      <button class="otree-btn-next btn btn-primary" type="submit">Next</button>
     </div>
   </section>
 </div>
