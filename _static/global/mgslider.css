@@ -1,7 +1,16 @@
 /* _static/global/mgslider.css */
 
 /* table layout */
-.mgslider-wrapper { width: 100%; border-collapse: collapse; margin: 10px 0 18px 0; }
+.mgslider-wrapper {
+  width: 520px;
+  margin: 10px auto 18px auto;
+  border-collapse: collapse;
+}
+
+.mgslider-wrapper td {
+  vertical-align: middle;
+}
+
 .mgslider-limit { width: 40px; text-align: center; color: #555; font-size: 13px; }
 
 /* the blue cover bar (click to reveal) */
@@ -16,7 +25,17 @@
 /* actual slider */
 input.mgslider { width: 100%; }
 
-/* feedback line */
-.mgslider-feedback td { padding-top: 6px; }
-.mgslider-show { color: #333; font-size: 14px; }
-.mgslider-value { font-weight: 700; }
+.mgslider-feedback td {
+  padding-top: 8px;
+  text-align: center;
+}
+
+.mgslider-show {
+  font-size: 18px;
+  color: #222;
+}
+
+.mgslider-value {
+  font-size: 22px;
+  font-weight: 800;
+}

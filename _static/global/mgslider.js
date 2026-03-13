@@ -118,7 +118,7 @@ mgslider.prototype.from_internal = function (y) {
 };
 
 mgslider.prototype.feedback = function (value) {
-    return this.yourvalue + ": <b class='mgslider-value'>" + this.f2s(value, false) + "</b>";
+    return this.yourvalue + ": <b class='mgslider-value'>$" + this.f2s(value, false, 2) + "</b>";
 };
 
 mgslider.prototype.markup = function (position) {
@@ -127,12 +127,12 @@ mgslider.prototype.markup = function (position) {
     return "\
         <table id='" + this.id("wrapper") + "' class='mgslider-wrapper' border='0'>\
             <tr>\
-                <td class='mgslider-limit'>" + this.f2s(this.left(), true) + "</td>\
+                <td class='mgslider-limit'>$" + this.f2s(this.left(), true, 2) + "</td>\
                 <td width='90%'>\
                     <div id='" + this.id("before") + "' class='mgslider-before' onclick='mgsliders.lookup(\"" + this.field + "\").reveal(event)'></div>\
                     <input type='range' id='" + this.id() + "' min='10000' max='" + Math.round(this.to_internal(this.right())) + "' step='1' value='" + position_internal + "' class='mgslider form-range' oninput='mgsliders.lookup(\"" + this.field + "\").change_from_slider(this)' onchange='mgsliders.lookup(\"" + this.field + "\").change_from_slider(this)'>\
                 </td>\
-                <td class='mgslider-limit'>" + this.f2s(this.right(), true) + "</td>\
+                <td class='mgslider-limit'>$" + this.f2s(this.right(), true, 2) + "</td>\
             </tr>\
             <tr class='mgslider-feedback'>\
                 <td id='" + this.id("show") + "' class='mgslider-show' colspan='3'>" + this.feedback(0) + "</td>\
