@@ -637,14 +637,37 @@ class Results(Page):
             assigned_rank_pos=player.assigned_rank_pos,
             allocation_algo=C.ALLOCATION_ALGO,
         )
+    
+class BannerPracticeBDM(Page):
+    timeout_seconds = 2
+
+class BannerPracticeBinary(Page):
+    timeout_seconds = 2
+
+class PracticeCheckpoint(Page):
+    pass
+
+class BannerBeginReal(Page):
+    timeout_seconds = 2
 
 
 page_sequence = [
     Consent,
+
     InstructionsBDM,
-    WTP,
+    BannerPracticeBDM,
+    WTP,                 # WTP page runs practice BDM first if repeating/practice mode
+
     InstructionsBinary,
-    MyPage,
+    BannerPracticeBinary,
+    MyPage,              # Binary page runs practice trials first if repeating/practice mode
+
+    PracticeCheckpoint,  # Repeat Practice / Begin Real Experiment
+    BannerBeginReal,
+
+    WTP,                 # real BDM/WTP (same page, but JS in “real mode” now)
+    MyPage,              # real binary choice (same page, “real mode” now)
+
     ResultsWaitPage,
     Results,
 ]

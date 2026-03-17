@@ -43,14 +43,14 @@
 
     <button type="button" id="downloadBtn" class="btn btn-primary">Download CSV</button>
 
-    <!-- IMPORTANT: hidden field must be inside the form -->
     <input type="hidden" name="choice_data_json" id="choiceDataJson" value="">
-
-    <div style="margin-top: 12px;">
-      <button class="otree-btn-next btn btn-primary" type="submit">Next</button>
-    </div>
   </section>
-</div>
+
+  <div style="margin-top:12px;">
+    <button class="otree-btn-next btn btn-primary" id="nextBtn" type="submit" disabled>
+      Next
+    </button>
+  </div>
 {% endblock %}
 
 {% block scripts %}

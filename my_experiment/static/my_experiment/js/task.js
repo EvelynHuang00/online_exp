@@ -18,18 +18,20 @@ const choiceEl = $("choice");
 const fasterEl = $("faster");
 const endEl = $("end");
 const mainHintEl = $("mainHint");
+const timerEl = $("timer");
+const downloadBtn = $("downloadBtn");
+const nextBtn = document.getElementById("nextBtn");
+const hiddenJson = document.getElementById("choiceDataJson");
 
-const leftBtn = $("leftBtn");
-const rightBtn = $("rightBtn");
 const leftImg = $("leftImg");
 const rightImg = $("rightImg");
 const leftLabel = $("leftLabel");
 const rightLabel = $("rightLabel");
-const timerEl = $("timer");
-const downloadBtn = $("downloadBtn");
 
-// -------------------- PRACTICE + MAIN TRIALS --------------------
-const allTrials = buildTrials(); // 120 trials
+const phase = localStorage.getItem("phase") || "practice";
+const isReal = phase === "real";
+
+const allTrials = buildTrials();
 const PRACTICE_N = Math.min(
   Number(EXPERIMENT.PRACTICE_BINARY_TRIALS ?? 5),
   allTrials.length
@@ -38,10 +40,10 @@ const PRACTICE_N = Math.min(
 const practiceTrials = allTrials.slice(0, PRACTICE_N);
 const mainTrials = allTrials.slice(PRACTICE_N);
 
-// Start with practice block
-let isPracticeBlock = PRACTICE_N > 0;
-let trials = isPracticeBlock ? practiceTrials : mainTrials;
-// ---------------------------------------------------------------
+// practice phase: only practice
+// real phase: only main
+let isPracticeBlock = !isReal;
+let trials = isReal ? mainTrials : practiceTrials;
 
 const rows = [];
 
@@ -52,10 +54,18 @@ let timeoutHandle = null;
 let countdownHandle = null;
 
 function show(el) {
-  if (el) el.classList.remove("hidden");
+  if (!el) return;
+  el.classList.remove("hidden");
+  el.style.display = "";
 }
+
 function hide(el) {
-  if (el) el.classList.add("hidden");
+  if (!el) return;
+  el.classList.add("hidden");
+  el.style.display = "none";
+}
+function setNextEnabled(enabled) {
+  if (nextBtn) nextBtn.disabled = !enabled;
 }
 
 function setChoiceScreen(trial) {
@@ -69,9 +79,7 @@ function setChoiceScreen(trial) {
 }
 
 function startCountdown() {
-  // Do not show any countdown UI
   if (timerEl) timerEl.textContent = "";
-  return;
 }
 
 function cleanupTrialTimers() {
@@ -83,15 +91,13 @@ function cleanupTrialTimers() {
 
 function showFasterThenContinue() {
   hide(choiceEl);
-  hide(fixationEl);   // ensure cross is NOT visible during Faster
+  hide(fixationEl);
   if (timerEl) timerEl.textContent = "";
 
   show(fasterEl);
 
   setTimeout(() => {
     hide(fasterEl);
-
-    // After Faster, show fixation (ITI) before moving on (optional but clean)
     show(fixationEl);
     setTimeout(() => {
       nextTrial();
@@ -107,7 +113,6 @@ function recordResponse({ chosen_item_id, is_timeout, advance = "normal" }) {
 
   const tEnd = performance.now();
   const rt_ms = is_timeout ? "" : Math.round(tEnd - trialStartPerf);
-
   const trial = trials[trialIndex];
 
   rows.push({
@@ -115,7 +120,6 @@ function recordResponse({ chosen_item_id, is_timeout, advance = "normal" }) {
     session_id,
     trial_index: trialIndex + 1,
     is_practice: isPracticeBlock ? 1 : 0,
-
     left_item_id: trial.left_item_id,
     right_item_id: trial.right_item_id,
     chosen_item_id: is_timeout ? "" : chosen_item_id,
@@ -151,39 +155,72 @@ function onKeyDown(e) {
   }
 }
 
+function finishPracticeOnly() {
+  hide(fixationEl);
+  hide(choiceEl);
+  hide(fasterEl);
+  show(endEl);
+
+  if (statusEl) {
+    statusEl.textContent = "Practice complete.";
+  }
+
+  const msg = document.createElement("div");
+  msg.style.marginTop = "12px";
+  msg.innerHTML = `
+    <p>You have completed the practice trials.</p>
+    <p>Click <strong>Next</strong> to continue.</p>
+  `;
+  endEl.innerHTML = "";
+  endEl.appendChild(msg);
+
+  if (hiddenJson) hiddenJson.value = "";
+  show(nextBtn);
+  setNextEnabled(true);
+  window.removeEventListener("keydown", onKeyDown);
+}
+
+function finishRealTask() {
+  hide(fixationEl);
+  hide(choiceEl);
+  hide(fasterEl);
+  show(endEl);
+
+  const mainRowsOut = rows.filter((r) => r.is_practice === 0);
+
+  if (hiddenJson) {
+    hiddenJson.value = JSON.stringify(mainRowsOut);
+  }
+
+  downloadBtn.onclick = () => {
+    downloadCSV(mainRowsOut, `choice_subject_${subject_id}.csv`);
+  };
+
+  show(nextBtn);
+  setNextEnabled(true);
+  window.removeEventListener("keydown", onKeyDown);
+}
+
 function nextTrial() {
+  hide(nextBtn);
   trialIndex += 1;
 
-  // End of current block
   if (trialIndex >= trials.length) {
-    // If we just finished practice, switch to main block
     if (isPracticeBlock) {
-      isPracticeBlock = false;
-      trials = mainTrials;
-      trialIndex = -1;
-
-      statusEl.textContent = "Practice complete. Main task starts now.";
-      hide(fixationEl);
-      hide(choiceEl);
-      hide(fasterEl);
-      if (timerEl) timerEl.textContent = "";
-
-      setTimeout(nextTrial, 800);
-      return;
+      finishPracticeOnly();
+    } else {
+      finishRealTask();
     }
-
-    // End of main block
-    finishTask();
     return;
   }
 
-    if (isPracticeBlock) {
-        statusEl.textContent = `Practice: Trial ${trialIndex + 1} / ${trials.length}`;
-        hide(mainHintEl);
-    } else {
-        statusEl.textContent = "";
-        show(mainHintEl);
-    }
+  if (isPracticeBlock) {
+    statusEl.textContent = `Practice: Trial ${trialIndex + 1} / ${trials.length}`;
+    hide(mainHintEl);
+  } else {
+    statusEl.textContent = "";
+    show(mainHintEl);
+  }
 
   hide(fasterEl);
   show(fixationEl);
@@ -208,24 +245,7 @@ function nextTrial() {
   }, EXPERIMENT.FIXATION_MS);
 }
 
-function finishTask() {
-  hide(fixationEl);
-  hide(choiceEl);
-  hide(fasterEl);
-  show(endEl);
-  
-  const mainRowsOut = rows.filter(r => r.is_practice === 0);
-  document.getElementById("choiceDataJson").value = JSON.stringify(mainRowsOut);
-
-  // Download ONLY main trials (exclude practice)
-  downloadBtn.onclick = () => {
-    const mainRowsOut = rows.filter((r) => r.is_practice === 0);
-    downloadCSV(mainRowsOut, `choice_subject_${subject_id}.csv`);
-  };
-
-  window.removeEventListener("keydown", onKeyDown);
-}
-
-
+hide(nextBtn);
+setNextEnabled(false);
 window.addEventListener("keydown", onKeyDown);
 nextTrial();

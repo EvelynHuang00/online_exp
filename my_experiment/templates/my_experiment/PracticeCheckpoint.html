@@ -1,0 +1,41 @@
+{% extends "global/Page.html" %}
+{% block content %}
+
+<div class="container" style="max-width: 760px; margin: 40px auto; text-align: center;">
+  <h3>Practice Complete</h3>
+
+  <p>
+    Please ensure you understand the experiment prior to beginning the real experiment.
+    If you have any questions, please ask the experimenter.
+  </p>
+
+  <p>
+    If you'd like to repeat the practice, please click <strong>Repeat Practice</strong>.
+  </p>
+
+  <input type="hidden" name="practice_decision" id="practiceDecision" value="">
+
+  <div style="margin-top: 24px; display: flex; gap: 16px; justify-content: center;">
+    <button type="button" class="btn btn-secondary" id="repeatBtn">Repeat Practice</button>
+    <button type="button" class="btn btn-primary" id="beginBtn">Begin Real Experiment</button>
+  </div>
+</div>
+
+<script>
+  const decisionInput = document.getElementById("practiceDecision");
+  const repeatBtn = document.getElementById("repeatBtn");
+  const beginBtn = document.getElementById("beginBtn");
+
+  repeatBtn.addEventListener("click", () => {
+    decisionInput.value = "repeat";
+    document.querySelector("form").submit();
+  });
+
+  beginBtn.addEventListener("click", () => {
+    decisionInput.value = "begin";
+    localStorage.setItem("phase", "real");
+    document.querySelector("form").submit();
+  });
+</script>
+
+{% endblock %}

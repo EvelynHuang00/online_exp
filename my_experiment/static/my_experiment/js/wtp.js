@@ -5,27 +5,28 @@ import { downloadCSV } from "./export.js";
 const subject_id = localStorage.getItem("subject_id") || "S001";
 const session_id = localStorage.getItem("session_id") || "session_001";
 
-// Expected WTP.html structure:
-// <div id="bdmPractice"></div>
-// <div id="wtpMain" class="hidden">
-//   <div id="wtpForm"></div>
-//   <div id="bdmResult"></div>
-//   <button type="button" id="downloadWtpBtn">Download WTP CSV</button>
-//   <button class="otree-btn-next" id="nextBtn" disabled>Next</button>
-// </div>
-
+const headerEl = document.getElementById("wtpHeader");
 const practiceEl = document.getElementById("bdmPractice");
 const mainEl = document.getElementById("wtpMain");
 
-const container = document.getElementById("wtpForm");
 const simulateBtn = document.getElementById("simulateBtn");
 const resultEl = document.getElementById("bdmResult");
+const nextBtn = document.getElementById("nextBtn");
+const hiddenJson = document.getElementById("wtpDataJson");
+
+const phase = localStorage.getItem("phase") || "practice";
+const isReal = phase === "real";
 
 function show(el) {
-  if (el) el.classList.remove("hidden");
+  if (el) el.style.display = "";
 }
+
 function hide(el) {
-  if (el) el.classList.add("hidden");
+  if (el) el.style.display = "none";
+}
+
+function setNextEnabled(enabled) {
+  if (nextBtn) nextBtn.disabled = !enabled;
 }
 
 // -------------------- BDM helpers --------------------
@@ -34,7 +35,6 @@ function pickBindingSnack() {
 }
 
 function drawPrice() {
-  // Discrete grid draw: 0, step, 2*step, ..., ENDOWMENT
   const endowment = Number(BDM.ENDOWMENT);
   const step = Number(BDM.PRICE_STEP);
 
@@ -50,92 +50,91 @@ function drawPrice() {
   return Number((k * step).toFixed(2));
 }
 
-
-function randomOnGrid(min, max, step) {
-  const nSteps = Math.round((max - min) / step);
-  const k = Math.floor(Math.random() * (nSteps + 1));
-  return Number((min + k * step).toFixed(2));
-}
-
-// Slider settings
-
-function randomSliderValue() {
-  const nSteps = Math.round((SLIDER_MAX - SLIDER_MIN) / SLIDER_STEP);
-  const k = Math.floor(Math.random() * (nSteps + 1));
-  return Number((SLIDER_MIN + k * SLIDER_STEP).toFixed(2));
-}
-
 const SLIDER_MIN = 0;
 const SLIDER_MAX = 1.0;
 const SLIDER_STEP = 0.05;
 
-// -------------------- Main WTP table (sliders) --------------------
+// -------------------- general render function --------------------
+
+function renderSnackSlider({ container, snack, fieldName }) {
+  const block = document.createElement("div");
+  block.style.margin = "24px 0";
+  block.style.padding = "16px";
+  block.style.border = "1px solid #ddd";
+  block.style.borderRadius = "10px";
+  block.style.textAlign = "center";
+
+  const img = document.createElement("img");
+  img.src = snack.img;
+  img.alt = snack.label;
+  img.style.maxWidth = "160px";
+  img.style.maxHeight = "160px";
+  img.style.objectFit = "contain";
+  img.style.display = "block";
+  img.style.margin = "0 auto 12px auto";
+
+  const sliderRow = document.createElement("div");
+  sliderRow.style.display = "flex";
+  sliderRow.style.alignItems = "center";
+  sliderRow.style.justifyContent = "center";
+  sliderRow.style.gap = "12px";
+  sliderRow.style.width = "100%";
+
+  const sliderDiv = document.createElement("div");
+  sliderDiv.style.width = "100%";
+  sliderDiv.style.maxWidth = "700px";
+  sliderDiv.style.margin = "0 auto";
+
+  sliderRow.appendChild(sliderDiv);
+
+  block.appendChild(img);
+  block.appendChild(sliderRow);
+  container.appendChild(block);
+
+  const slider = new mgslider(fieldName, SLIDER_MIN, SLIDER_MAX, SLIDER_STEP);
+  slider.recall = false;
+  slider.print(sliderDiv);
+
+  return {
+    block,
+    sliderDiv,
+    getValue: () => {
+      const input = document.getElementById(fieldName);
+      return input ? Number(input.value || 0) : 0;
+    },
+  };
+}
+
+// -------------------- Main WTP table --------------------
 function buildMainWTPTable() {
   const slidersHere = document.getElementById("sliders_here");
   if (!slidersHere) return;
 
   slidersHere.innerHTML = "";
 
-  const min = 0;
-  const max = 1.0;
-  const step = 0.05;
-
   for (const s of SNACKS) {
-    // Create a wrapper for each snack+slider so they stay together
-    const block = document.createElement("div");
-    block.style.margin = "18px 0";
-
-    // Snack label (above the slider)
-    const label = document.createElement("div");
-    label.style.fontWeight = "600";
-    label.style.marginBottom = "6px";
-    label.textContent = s.label;
-
-    // Slider container
-    const sliderDiv = document.createElement("div");
-
-    block.appendChild(label);
-    block.appendChild(sliderDiv);
-    slidersHere.appendChild(block);
-
-    const fieldName = `bid_${s.id}`;
-    const slider = new mgslider(fieldName, min, max, step);
-    slider.recall = true;
-
-    // Print slider INSIDE this snack's container
-    slider.print(sliderDiv);
+    renderSnackSlider({
+      container: slidersHere,
+      snack: s,
+      fieldName: `bid_${s.id}`,
+    });
   }
 }
 
-// -------------------- Next gating --------------------
-function setNextEnabled(enabled) {
-  const nextBtn = document.getElementById("nextBtn");
-  if (nextBtn) nextBtn.disabled = !enabled;
-}
-
-function validateAllBids() {
-  if (mainEl && mainEl.classList.contains("hidden")) return false;
-
-  for (const s of SNACKS) {
-    const el = document.getElementById(`bid_${s.id}`);
-    if (!el) return false;
-    const num = Number(el.value);
-    if (!Number.isFinite(num) || num < 0) return false;
-  }
-  return true;
-}
-
-// -------------------- Collect bids (sliders) --------------------
 function collectBids() {
   const bids = [];
 
   for (const s of SNACKS) {
     const fieldName = `bid_${s.id}`;
     const input = document.querySelector(`input[name="${fieldName}"]`);
-    if (!input) return { ok: false, msg: `Missing slider input for: ${s.label}` };
+    if (!input) {
+      return { ok: false, msg: `Missing slider input for: ${s.label}` };
+    }
 
     const bid = Number(input.value);
-    if (!Number.isFinite(bid) || bid < 0) return { ok: false, msg: `Invalid bid for: ${s.label}` };
+    if (!Number.isFinite(bid) || bid < 0) {
+      return { ok: false, msg: `Invalid bid for: ${s.label}` };
+    }
 
     bids.push({
       snack_id: s.id,
@@ -147,57 +146,61 @@ function collectBids() {
   return { ok: true, bids };
 }
 
-// -------------------- BDM practice (sliders) --------------------
+// -------------------- Practice BDM only --------------------
 const PRACTICE_N = Number(BDM.PRACTICE_TRIALS ?? 3);
 let practiceCount = 0;
 
+function finishPracticeOnly() {
+  if (!practiceEl) return;
+
+  hide(headerEl);
+  hide(mainEl);
+
+  practiceEl.innerHTML = `
+    <div class="container">
+      <h4>BDM practice complete</h4>
+      <p>You have completed the BDM practice trial(s).</p>
+      <p>Click <strong>Next</strong> to continue to the Binary Choice instructions.</p>
+    </div>
+  `;
+
+  if (hiddenJson) hiddenJson.value = "";
+  show(nextBtn);
+  setNextEnabled(true);
+}
+
 function renderPracticeTrial() {
   if (!practiceEl || PRACTICE_N <= 0) {
-    showMain();
+    finishPracticeOnly();
     return;
   }
+
+  hide(headerEl);
+  hide(mainEl);
+  hide(nextBtn);
 
   const snack = SNACKS[Math.floor(Math.random() * SNACKS.length)];
 
   practiceEl.innerHTML = `
-    <div class="container">
+    <div class="container" style="text-align:center;">
       <h4>BDM Practice (${practiceCount + 1} / ${PRACTICE_N})</h4>
-      <p>Snack: <strong>${snack.label}</strong></p>
-
-      <div class="form-group">
-        <label>Your bid</label>
-        <div style="display:flex; gap:12px; align-items:center;">
-          <input
-            type="range"
-            min="${SLIDER_MIN}"
-            max="${SLIDER_MAX}"
-            step="${SLIDER_STEP}"
-            value="0"
-            class="form-range"
-            id="practiceBid"
-          />
-          <span id="practiceBidVal" style="min-width:72px; text-align:right;">$0.00</span>
-        </div>
-      </div>
-
+      <div id="practiceSliderContainer"></div>
       <button type="button" class="btn btn-primary" id="practiceSubmit" style="margin-top:12px;">Submit</button>
       <div id="practiceResult" style="margin-top:12px;"></div>
     </div>
   `;
 
-  const practiceSlider = document.getElementById("practiceBid");
-  const practiceLabel = document.getElementById("practiceBidVal");
+  const practiceSliderContainer = document.getElementById("practiceSliderContainer");
 
-  const updatePractice = () => {
-    const v = Number(practiceSlider.value);
-    practiceLabel.textContent = `$${v.toFixed(2)}`;
-  };
-
-  practiceSlider.addEventListener("input", updatePractice);
-  updatePractice();
+  const rendered = renderSnackSlider({
+    container: practiceSliderContainer,
+    snack,
+    fieldName: "practiceBid",
+  });
 
   document.getElementById("practiceSubmit").addEventListener("click", () => {
-    const bid = Number(practiceSlider.value);
+    const bid = rendered.getValue();
+
     if (!Number.isFinite(bid) || bid < 0) {
       alert("Invalid bid.");
       return;
@@ -220,24 +223,28 @@ function renderPracticeTrial() {
     `;
 
     practiceCount += 1;
+
     setTimeout(() => {
       if (practiceCount >= PRACTICE_N) {
-        showMain();
+        finishPracticeOnly();
       } else {
         renderPracticeTrial();
       }
-    }, 4000);
+    }, 2000);
   });
 }
 
-function showMain() {
+// -------------------- Real WTP only --------------------
+function showRealMain() {
   if (practiceEl) practiceEl.innerHTML = "";
+  show(headerEl);
   show(mainEl);
+  hide(nextBtn);
   buildMainWTPTable();
-  setNextEnabled(validateAllBids());
+  if (hiddenJson) hiddenJson.value = "";
+  setNextEnabled(false);
 }
 
-// -------------------- Main WTP: download --------------------
 simulateBtn?.addEventListener("click", () => {
   const out = collectBids();
   if (!out.ok) {
@@ -267,14 +274,12 @@ simulateBtn?.addEventListener("click", () => {
       bid: r.bid.toFixed(2),
 
       endowment_initial: endowment.toFixed(2),
-
       binding_snack_id: binding.id,
       is_binding: isBinding ? 1 : 0,
       price_draw: isBinding ? price_draw.toFixed(2) : "",
       purchase_decision: isBinding ? (purchase ? 1 : 0) : "",
       payment: isBinding ? payment.toFixed(2) : "",
       remaining_cash: isBinding ? remaining.toFixed(2) : "",
-
       timestamp,
     };
   });
@@ -291,20 +296,21 @@ simulateBtn?.addEventListener("click", () => {
         <div>Remaining cash: $${remaining.toFixed(2)}</div>
       </div>
     `;
-    document.getElementById("wtpDataJson").value = JSON.stringify(rows);
-
-    const nextBtn = document.getElementById("nextBtn");
-    if (nextBtn) nextBtn.disabled = false;
   }
 
+  if (hiddenJson) hiddenJson.value = JSON.stringify(rows);
+  show(nextBtn);
+  setNextEnabled(true);
 });
 
 // -------------------- Start --------------------
+hide(headerEl);
 hide(mainEl);
+hide(nextBtn);
 setNextEnabled(false);
 
-if (PRACTICE_N > 0) {
-  renderPracticeTrial();
+if (isReal) {
+  showRealMain();
 } else {
-  showMain();
+  renderPracticeTrial();
 }

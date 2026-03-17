@@ -1,0 +1,13 @@
+{% extends "global/Page.html" %}
+{% block content %}
+<div style="text-align:center; margin-top:120px;">
+  <h2>PRACTICE TRIALS</h2>
+</div>
+
+<script>
+  localStorage.setItem("phase", "practice");
+  setTimeout(() => {
+    document.querySelector("form")?.submit();
+  }, 2000);
+</script>
+{% endblock %}

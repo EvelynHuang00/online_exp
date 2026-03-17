@@ -1,8 +1,6 @@
 {% load otree static %}
 
-{% block title %}
-Willingness to Pay
-{% endblock %}
+{% block title %}{% endblock %}
 
 {% block styles %}
 <link rel="stylesheet" href="{% static 'global/mgslider.css' %}">
@@ -10,16 +8,16 @@ Willingness to Pay
 
 {% block content %}
 <div class="container">
-  <p>Enter your maximum willingness to pay for each snack.</p>
+  <div id="wtpHeader" style="display:none;">
+    <h1>Willingness to Pay</h1>
+    <p>Please enter your maximum willingness to pay for each snack below.</p>
+  </div>
 
-  <!-- BDM practice renders here first -->
   <div id="bdmPractice"></div>
 
-  <!-- Main WTP block is hidden until practice completes -->
-  <div id="wtpMain" class="hidden">
+  <div id="wtpMain" style="display:none;">
     <div id="wtpForm">
-        <p>Click the blue bars to reveal the sliders.</p>
-        <div id="sliders_here"></div>
+      <div id="sliders_here"></div>
     </div>
 
     <div id="bdmResult" style="margin-top:16px;"></div>
@@ -27,16 +25,19 @@ Willingness to Pay
 
     <section id="end" style="margin-top:16px;">
       <p id="simulateHelp" style="margin-top:16px;">
-         Click below to simulate what would happen in the BDM given your answers.
+        Click below to submit your answers.
       </p>
 
       <button type="button" id="simulateBtn" class="btn btn-primary">
-         Simulate Auction
+        Submit Answers
       </button>
-      <div style="margin-top:12px;">
-        <button class="otree-btn-next btn btn-primary" id="nextBtn" type="submit" disabled>Next</button>
-      </div>
     </section>
+  </div>
+
+  <div style="margin-top:12px;">
+    <button class="otree-btn-next btn btn-primary" id="nextBtn" type="submit" disabled>
+      Next
+    </button>
   </div>
 </div>
 {% endblock %}
