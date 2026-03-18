@@ -41,6 +41,11 @@ class C(BaseConstants):
     # These IDs must match the item IDs used in the frontend files.
     SNACK_IDS = ["snack1", "snack2", "snack3", "snack4", "snack5", "snack6"]
 
+    # Stage 3 policy: number of repeat cycles preallocated in page_sequence.
+    # oTree page_sequence is static, so strict infinity is not possible.
+    # Set this high to make repeat effectively always available in practice.
+    MAX_PRACTICE_REPEAT_CYCLES = 20
+
 
 # =============================================================================
 # CORE OTree MODELS
@@ -59,15 +64,38 @@ class Group(BaseGroup):
 
 class Player(BasePlayer):
     # -------------------------------------------------------------------------
+    # Backend phase state (Stage 1 foundation)
+    # -------------------------------------------------------------------------
+    # Source of truth for whether the participant is in practice or real flow.
+    current_phase = models.StringField(initial="practice")
+
+    # Last checkpoint decision submitted by the participant.
+    # Stage 2 will connect this to form handling on PracticeCheckpoint.
+    practice_decision = models.StringField(blank=True)
+
+    # How many times the participant requested practice repetition.
+    practice_repeat_count = models.IntegerField(initial=0)
+
+    # Whether the participant has completed at least one practice block.
+    practice_completed = models.BooleanField(initial=False)
+
+    # Whether the participant has entered the real block.
+    real_started = models.BooleanField(initial=False)
+
+    # -------------------------------------------------------------------------
     # Raw frontend payloads
     # -------------------------------------------------------------------------
     # Main-task binary choices submitted by the frontend as one JSON list.
     # This is the only binary-task field expected by this version of the app.
     choice_data_json = models.LongStringField(blank=True)
+    # Practice binary payload kept separate from formal data.
+    choice_data_json_practice = models.LongStringField(blank=True)
 
     # WTP rows submitted by the frontend as one JSON list.
     # This is the only WTP field expected by this version of the app.
     wtp_data_json = models.LongStringField(blank=True)
+    # Practice WTP payload kept separate from formal data.
+    wtp_data_json_practice = models.LongStringField(blank=True)
 
     # -------------------------------------------------------------------------
     # Derived backend results
@@ -90,6 +118,31 @@ class Player(BasePlayer):
     # Position of the assigned snack in the participant's inferred ranking.
     assigned_rank_pos = models.IntegerField(blank=True)
 
+    def ensure_backend_state_initialized(self):
+        """
+        Keep backend phase-state fields in a valid baseline state.
+
+        This method is idempotent and safe to call from multiple pages.
+        """
+        current_phase = self.field_maybe_none("current_phase")
+        if current_phase not in ("practice", "real"):
+            self.current_phase = "practice"
+
+        practice_decision = self.field_maybe_none("practice_decision")
+        if practice_decision not in ("", "repeat", "begin"):
+            self.practice_decision = ""
+
+        practice_repeat_count = self.field_maybe_none("practice_repeat_count")
+        if practice_repeat_count is None:
+            self.practice_repeat_count = 0
+
+        practice_completed = self.field_maybe_none("practice_completed")
+        if practice_completed is None:
+            self.practice_completed = False
+
+        real_started = self.field_maybe_none("real_started")
+        if real_started is None:
+            self.real_started = False
 
 # =============================================================================
 # EXTRA TABLES
@@ -107,6 +160,8 @@ class ChoiceTrial(ExtraModel):
 
     session_id = models.StringField()
     subject_id = models.StringField()
+    # Distinguish practice vs real for live-save and dedup safety.
+    phase = models.StringField(initial="real")
 
     trial_index = models.IntegerField()
     pair_id = models.StringField()
@@ -195,6 +250,19 @@ def _read_binary_rows_from_player(player: Player):
     return _parse_json_list(player.choice_data_json)
 
 
+def _read_binary_rows_from_player_practice(player: Player):
+    """
+    Read practice binary-task rows from the practice-only storage field.
+    """
+    return _parse_json_list(player.choice_data_json_practice)
+
+
+def _current_backend_phase(player: Player) -> str:
+    """Return backend phase label for task writes and live saves."""
+    player.ensure_backend_state_initialized()
+    return "real" if bool(player.field_maybe_none("real_started")) else "practice"
+
+
 def _read_wtp_rows_from_player(player: Player):
     """
     Read WTP rows from the main frontend field.
@@ -202,6 +270,13 @@ def _read_wtp_rows_from_player(player: Player):
     The frontend is expected to submit a JSON list through wtp_data_json.
     """
     return _parse_json_list(player.wtp_data_json)
+
+
+def _read_wtp_rows_from_player_practice(player: Player):
+    """
+    Read practice WTP rows from the practice-only storage field.
+    """
+    return _parse_json_list(player.wtp_data_json_practice)
 
 
 def _normalize_wtp_rows(raw_rows):
@@ -344,7 +419,7 @@ def _infer_ranking_win_count_random_ties(*, valid_rows, snack_ids, seed):
     return ranking, win_counts, tie_group_id_by_snack, final_rank_by_snack
 
 
-def _read_trials_for_player(player: Player):
+def _read_trials_for_player(player: Player, *, phase: str = "real"):
     """
     Read binary-choice data in one ranking-compatible format.
 
@@ -360,13 +435,25 @@ def _read_trials_for_player(player: Player):
     session_id = _get_session_id(player)
     subject_id = _get_subject_id(player)
 
+    phase = (phase or "real").strip().lower()
+    if phase not in ("practice", "real"):
+        phase = "real"
+
     trials = ChoiceTrial.filter(player=player)
     if trials:
         rows = []
         for trial in sorted(trials, key=lambda x: x.trial_index):
+            trial_phase = (getattr(trial, "phase", None) or "real").strip().lower()
+            if trial_phase not in ("practice", "real"):
+                trial_phase = "real"
+
+            if trial_phase != phase:
+                continue
+
             rows.append(
                 dict(
-                    is_practice=0,
+                    phase=trial_phase,
+                    is_practice=1 if trial_phase == "practice" else 0,
                     is_timeout=1 if trial.is_timeout else 0,
                     chosen_item_id=trial.chosen_item or "",
                     left_item_id=trial.left_item_id,
@@ -378,16 +465,24 @@ def _read_trials_for_player(player: Player):
                     subject_id=subject_id,
                 )
             )
-        return rows
+        if rows:
+            return rows
 
-    return _read_binary_rows_from_player(player)
+    rows = _read_binary_rows_from_player(player)
+    if phase == "real":
+        return [row for row in rows if int(row.get("is_practice", 0) or 0) == 0]
+
+    return [row for row in rows if int(row.get("is_practice", 0) or 0) != 0]
 
 
 # =============================================================================
 # PAGES
 # =============================================================================
 class Consent(Page):
-    pass
+    @staticmethod
+    def before_next_page(player: Player, timeout_happened):
+        # Stage 1: always initialize backend phase state as early as possible.
+        player.ensure_backend_state_initialized()
 
 
 class InstructionsBDM(Page):
@@ -404,9 +499,68 @@ class WTP(Page):
     form_model = "player"
     form_fields = ["wtp_data_json"]
 
+    @staticmethod
+    def before_next_page(player: Player, timeout_happened):
+        # Stage 5: enforce strict separation of practice vs real WTP payloads.
+        phase = _current_backend_phase(player)
+        raw = player.field_maybe_none("wtp_data_json") or ""
+
+        if phase == "real":
+            player.current_phase = "real"
+            return
+
+        player.current_phase = "practice"
+        player.wtp_data_json_practice = raw
+        player.wtp_data_json = ""
+
 
 class InstructionsBinary(Page):
     pass
+
+
+def _repeat_block_requested(player: Player) -> bool:
+    """Whether participant selected repeat at the first checkpoint."""
+    return int(player.field_maybe_none("practice_repeat_count") or 0) > 0
+
+
+def _show_repeat_block(player: Player) -> bool:
+    """Show optional repeat-practice pages only before real starts."""
+    return _repeat_block_requested(player) and not bool(player.field_maybe_none("real_started"))
+
+
+def _can_request_repeat(player: Player) -> bool:
+    """Whether participant can still request another repeat cycle."""
+    repeat_count = int(player.field_maybe_none("practice_repeat_count") or 0)
+    return repeat_count < int(C.MAX_PRACTICE_REPEAT_CYCLES)
+
+
+def _apply_practice_checkpoint_decision(player: Player, *, allow_repeat: bool):
+    """Apply checkpoint decision to backend state with policy enforcement."""
+    player.ensure_backend_state_initialized()
+
+    decision = (player.field_maybe_none("practice_decision") or "").strip().lower()
+    if decision not in ("repeat", "begin"):
+        decision = "begin"
+
+    repeat_count = int(player.field_maybe_none("practice_repeat_count") or 0)
+
+    # Once real starts, keep participant in real flow.
+    if bool(player.field_maybe_none("real_started")):
+        decision = "begin"
+
+    if decision == "repeat" and not allow_repeat:
+        decision = "begin"
+
+    player.practice_decision = decision
+    player.practice_completed = True
+
+    if decision == "repeat":
+        player.practice_repeat_count = repeat_count + 1
+        player.current_phase = "practice"
+        player.real_started = False
+    else:
+        player.current_phase = "real"
+        player.real_started = True
 
 
 class MyPage(Page):
@@ -419,6 +573,20 @@ class MyPage(Page):
     """
     form_model = "player"
     form_fields = ["choice_data_json"]
+
+    @staticmethod
+    def before_next_page(player: Player, timeout_happened):
+        # Stage 4: keep practice choice payloads out of formal field.
+        phase = _current_backend_phase(player)
+        raw = player.field_maybe_none("choice_data_json") or ""
+
+        if phase == "real":
+            player.current_phase = "real"
+            return
+
+        player.current_phase = "practice"
+        player.choice_data_json_practice = raw
+        player.choice_data_json = ""
 
     @staticmethod
     def live_method(player: Player, data):
@@ -449,6 +617,11 @@ class MyPage(Page):
 
         session_id = _get_session_id(player)
         subject_id = _get_subject_id(player)
+        phase = _current_backend_phase(player)
+
+        data_phase = str(data.get("phase", "") or "").strip().lower()
+        if data_phase in ("practice", "real"):
+            phase = data_phase
 
         trial_index = int(data.get("trial_index", 0) or 0)
         if trial_index <= 0:
@@ -468,7 +641,7 @@ class MyPage(Page):
 
         timestamp_utc = str(data.get("timestamp_utc", "") or "")
 
-        existing = ChoiceTrial.filter(player=player, trial_index=trial_index)
+        existing = ChoiceTrial.filter(player=player, phase=phase, trial_index=trial_index)
         if existing:
             return dict(ok=True, dedup=True)
 
@@ -476,6 +649,7 @@ class MyPage(Page):
             player=player,
             session_id=session_id,
             subject_id=subject_id,
+            phase=phase,
             trial_index=trial_index,
             pair_id=pair_id,
             left_item_id=left_item_id,
@@ -545,8 +719,15 @@ class ResultsWaitPage(WaitPage):
             session_id = _get_session_id(player)
             subject_id = _get_subject_id(player)
 
-            raw_rows = _read_trials_for_player(player)
+            raw_rows = _read_trials_for_player(player, phase="real")
             valid_rows = _filter_valid_choice_rows(raw_rows)
+
+            if len(valid_rows) == 0:
+                player.participant.vars["real_data_warning"] = (
+                    "No valid real binary trials were detected; ranking used tie-break fallback."
+                )
+            else:
+                player.participant.vars["real_data_warning"] = ""
 
             # Each player gets a deterministic seed derived from the group seed.
             per_player_seed = int(self.group.ranking_seed) * 100 + int(player.id_in_group)
@@ -627,8 +808,14 @@ class Results(Page):
             win_counts = {}
 
         debug_source = player.choice_data_json or ""
+        real_data_warning = player.participant.vars.get("real_data_warning", "")
+        config_debug_enabled = bool(player.session.config.get("show_results_debug", False))
+        participant_label = str(getattr(player.participant, "label", "") or "")
+        is_debug_viewer = participant_label.strip().lower().startswith("debug")
+        show_results_debug = config_debug_enabled and is_debug_viewer
 
         return dict(
+            show_results_debug=show_results_debug,
             debug_json_len=len(debug_source),
             inferred_ranking=ranking,
             win_counts=win_counts,
@@ -636,6 +823,7 @@ class Results(Page):
             rsd_order=player.rsd_order,
             assigned_rank_pos=player.assigned_rank_pos,
             allocation_algo=C.ALLOCATION_ALGO,
+            real_data_warning=real_data_warning,
         )
     
 class BannerPracticeBDM(Page):
@@ -645,10 +833,102 @@ class BannerPracticeBinary(Page):
     timeout_seconds = 2
 
 class PracticeCheckpoint(Page):
-    pass
+    form_model = "player"
+    form_fields = ["practice_decision"]
+
+    @staticmethod
+    def vars_for_template(player: Player):
+        return dict(show_repeat_button=_can_request_repeat(player))
+
+    @staticmethod
+    def before_next_page(player: Player, timeout_happened):
+        _apply_practice_checkpoint_decision(
+            player,
+            allow_repeat=_can_request_repeat(player),
+        )
+
+
+class BannerPracticeBDMRepeat(BannerPracticeBDM):
+    template_name = "my_experiment/BannerPracticeBDM.html"
+
+    @staticmethod
+    def is_displayed(player: Player):
+        return _show_repeat_block(player)
+
+
+class WTPRepeat(WTP):
+    template_name = "my_experiment/WTP.html"
+
+    @staticmethod
+    def is_displayed(player: Player):
+        return _show_repeat_block(player)
+
+
+class BannerPracticeBinaryRepeat(BannerPracticeBinary):
+    template_name = "my_experiment/BannerPracticeBinary.html"
+
+    @staticmethod
+    def is_displayed(player: Player):
+        return _show_repeat_block(player)
+
+
+class MyPageRepeat(MyPage):
+    template_name = "my_experiment/MyPage.html"
+
+    @staticmethod
+    def is_displayed(player: Player):
+        return _show_repeat_block(player)
+
+
+class PracticeCheckpointRepeat(PracticeCheckpoint):
+    template_name = "my_experiment/PracticeCheckpoint.html"
+
+    @staticmethod
+    def is_displayed(player: Player):
+        return _show_repeat_block(player)
+
+    @staticmethod
+    def vars_for_template(player: Player):
+        return dict(show_repeat_button=_can_request_repeat(player))
+
+    @staticmethod
+    def before_next_page(player: Player, timeout_happened):
+        _apply_practice_checkpoint_decision(
+            player,
+            allow_repeat=_can_request_repeat(player),
+        )
 
 class BannerBeginReal(Page):
     timeout_seconds = 2
+
+    @staticmethod
+    def is_displayed(player: Player):
+        return bool(player.field_maybe_none("real_started"))
+
+
+class WTPReal(WTP):
+    template_name = "my_experiment/WTP.html"
+
+    @staticmethod
+    def is_displayed(player: Player):
+        return bool(player.field_maybe_none("real_started"))
+
+
+class MyPageReal(MyPage):
+    template_name = "my_experiment/MyPage.html"
+
+    @staticmethod
+    def is_displayed(player: Player):
+        return bool(player.field_maybe_none("real_started"))
+
+
+_repeat_cycle_pages = [
+    BannerPracticeBDMRepeat,
+    WTPRepeat,
+    BannerPracticeBinaryRepeat,
+    MyPageRepeat,
+    PracticeCheckpointRepeat,
+]
 
 
 page_sequence = [
@@ -663,10 +943,13 @@ page_sequence = [
     MyPage,              # Binary page runs practice trials first if repeating/practice mode
 
     PracticeCheckpoint,  # Repeat Practice / Begin Real Experiment
+
+    *_repeat_cycle_pages * int(C.MAX_PRACTICE_REPEAT_CYCLES),
+
     BannerBeginReal,
 
-    WTP,                 # real BDM/WTP (same page, but JS in “real mode” now)
-    MyPage,              # real binary choice (same page, “real mode” now)
+    WTPReal,             # real BDM/WTP (same page, but JS in “real mode” now)
+    MyPageReal,          # real binary choice (same page, “real mode” now)
 
     ResultsWaitPage,
     Results,
@@ -728,6 +1011,7 @@ def custom_export_choice_trials(players):
     yield [
         "session_id",
         "subject_id",
+        "phase",
         "trial_index",
         "pair_id",
         "left_item_id",
@@ -742,11 +1026,32 @@ def custom_export_choice_trials(players):
         subject_id = _get_subject_id(player)
 
         trials = ChoiceTrial.filter(player=player)
+        exported_keys = set()
+
         if trials:
             for trial in sorted(trials, key=lambda x: x.trial_index):
+                trial_phase = (getattr(trial, "phase", None) or "real").strip().lower()
+                if trial_phase not in ("practice", "real"):
+                    trial_phase = "real"
+
+                key = (
+                    trial_phase,
+                    trial.trial_index,
+                    trial.pair_id,
+                    trial.left_item_id,
+                    trial.right_item_id,
+                    trial.chosen_item,
+                    trial.rt_ms,
+                    1 if trial.is_timeout else 0,
+                )
+                if key in exported_keys:
+                    continue
+                exported_keys.add(key)
+
                 yield [
                     session_id,
                     subject_id,
+                    trial_phase,
                     trial.trial_index,
                     trial.pair_id,
                     trial.left_item_id,
@@ -755,20 +1060,63 @@ def custom_export_choice_trials(players):
                     trial.rt_ms,
                     1 if trial.is_timeout else 0,
                 ]
-        else:
-            rows = _read_binary_rows_from_player(player)
-            for row in rows:
-                yield [
-                    session_id,
-                    subject_id,
-                    row.get("trial_index", ""),
-                    row.get("pair_id", ""),
-                    row.get("left_item_id", ""),
-                    row.get("right_item_id", ""),
-                    row.get("chosen_item_id", ""),
-                    row.get("rt_ms", ""),
-                    row.get("is_timeout", ""),
-                ]
+
+        # Include fallback JSON rows for any phase missing from live-save table.
+        # This keeps exports complete even if liveSend was unavailable.
+        has_practice_live = any(
+            (getattr(t, "phase", None) or "real").strip().lower() == "practice"
+            for t in trials
+        )
+        has_real_live = any(
+            (getattr(t, "phase", None) or "real").strip().lower() == "real"
+            for t in trials
+        )
+
+        fallback_phase_rows = []
+        if (not trials) or (not has_practice_live):
+            fallback_phase_rows.extend(
+                ("practice", row) for row in _read_binary_rows_from_player_practice(player)
+            )
+        if (not trials) or (not has_real_live):
+            fallback_phase_rows.extend(
+                ("real", row) for row in _read_binary_rows_from_player(player)
+            )
+
+        for phase_label, row in fallback_phase_rows:
+            trial_index = row.get("trial_index", "")
+            pair_id = row.get("pair_id", "")
+            left_item_id = row.get("left_item_id", "")
+            right_item_id = row.get("right_item_id", "")
+            chosen_item = row.get("chosen_item_id", "")
+            rt_ms = row.get("rt_ms", "")
+            is_timeout = row.get("is_timeout", "")
+
+            key = (
+                phase_label,
+                trial_index,
+                pair_id,
+                left_item_id,
+                right_item_id,
+                chosen_item,
+                rt_ms,
+                is_timeout,
+            )
+            if key in exported_keys:
+                continue
+            exported_keys.add(key)
+
+            yield [
+                session_id,
+                subject_id,
+                phase_label,
+                trial_index,
+                pair_id,
+                left_item_id,
+                right_item_id,
+                chosen_item,
+                rt_ms,
+                is_timeout,
+            ]
 
 
 def custom_export_ranking(players):
@@ -807,23 +1155,28 @@ def custom_export_wtp(players):
     Fallback source:
         wtp_data_json submitted by the frontend
     """
-    yield ["session_id", "subject_id", "snack_id", "bid_value", "price_draw"]
+    yield ["session_id", "subject_id", "phase", "snack_id", "bid_value", "price_draw"]
 
     for player in players:
         session_id = _get_session_id(player)
         subject_id = _get_subject_id(player)
 
         rows = WTPRow.filter(player=player)
+        exported_real = False
+
         if rows:
             for row in rows:
+                exported_real = True
                 yield [
                     session_id,
                     subject_id,
+                    "real",
                     row.snack_id,
                     row.bid_value,
                     row.price_draw,
                 ]
-        else:
+
+        if not exported_real:
             raw_rows = _read_wtp_rows_from_player(player)
             normalized_rows = _normalize_wtp_rows(raw_rows)
 
@@ -831,10 +1184,23 @@ def custom_export_wtp(players):
                 yield [
                     session_id,
                     subject_id,
+                    "real",
                     row.get("snack_id", ""),
                     row.get("bid_value", ""),
                     row.get("price_draw", ""),
                 ]
+
+        practice_raw_rows = _read_wtp_rows_from_player_practice(player)
+        practice_normalized_rows = _normalize_wtp_rows(practice_raw_rows)
+        for row in practice_normalized_rows:
+            yield [
+                session_id,
+                subject_id,
+                "practice",
+                row.get("snack_id", ""),
+                row.get("bid_value", ""),
+                row.get("price_draw", ""),
+            ]
 
 
 def custom_export_matching_rsd(players):

@@ -16,7 +16,9 @@
   <input type="hidden" name="practice_decision" id="practiceDecision" value="">
 
   <div style="margin-top: 24px; display: flex; gap: 16px; justify-content: center;">
+    {% if show_repeat_button %}
     <button type="button" class="btn btn-secondary" id="repeatBtn">Repeat Practice</button>
+    {% endif %}
     <button type="button" class="btn btn-primary" id="beginBtn">Begin Real Experiment</button>
   </div>
 </div>
@@ -26,10 +28,12 @@
   const repeatBtn = document.getElementById("repeatBtn");
   const beginBtn = document.getElementById("beginBtn");
 
-  repeatBtn.addEventListener("click", () => {
-    decisionInput.value = "repeat";
-    document.querySelector("form").submit();
-  });
+  if (repeatBtn) {
+    repeatBtn.addEventListener("click", () => {
+      decisionInput.value = "repeat";
+      document.querySelector("form").submit();
+    });
+  }
 
   beginBtn.addEventListener("click", () => {
     decisionInput.value = "begin";

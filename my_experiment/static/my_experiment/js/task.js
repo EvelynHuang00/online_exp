@@ -114,6 +114,8 @@ function recordResponse({ chosen_item_id, is_timeout, advance = "normal" }) {
   const tEnd = performance.now();
   const rt_ms = is_timeout ? "" : Math.round(tEnd - trialStartPerf);
   const trial = trials[trialIndex];
+  const phaseLabel = isPracticeBlock ? "practice" : "real";
+  const timestampIso = new Date().toISOString();
 
   rows.push({
     subject_id,
@@ -126,8 +128,25 @@ function recordResponse({ chosen_item_id, is_timeout, advance = "normal" }) {
     rt_ms,
     is_timeout: is_timeout ? 1 : 0,
     pair_id: trial.pair_id,
-    timestamp: new Date().toISOString(),
+    timestamp: timestampIso,
   });
+
+  // Live-save each trial with explicit phase so backend can dedup and export
+  // practice/real rows independently.
+  if (typeof liveSend === "function") {
+    liveSend({
+      type: "choice_trial",
+      phase: phaseLabel,
+      trial_index: trialIndex + 1,
+      pair_id: trial.pair_id,
+      left_item_id: trial.left_item_id,
+      right_item_id: trial.right_item_id,
+      chosen_item: is_timeout ? "" : chosen_item_id,
+      rt_ms,
+      is_timeout: !!is_timeout,
+      timestamp_utc: timestampIso,
+    });
+  }
 
   hide(choiceEl);
 
@@ -174,7 +193,8 @@ function finishPracticeOnly() {
   endEl.innerHTML = "";
   endEl.appendChild(msg);
 
-  if (hiddenJson) hiddenJson.value = "";
+  const practiceRowsOut = rows.filter((r) => r.is_practice === 1);
+  if (hiddenJson) hiddenJson.value = JSON.stringify(practiceRowsOut);
   show(nextBtn);
   setNextEnabled(true);
   window.removeEventListener("keydown", onKeyDown);

@@ -99,7 +99,7 @@ function renderSnackSlider({ container, snack, fieldName }) {
     block,
     sliderDiv,
     getValue: () => {
-      const input = document.getElementById(fieldName);
+      const input = document.querySelector(`input[name="${fieldName}"]`);
       return input ? Number(input.value || 0) : 0;
     },
   };
@@ -149,6 +149,7 @@ function collectBids() {
 // -------------------- Practice BDM only --------------------
 const PRACTICE_N = Number(BDM.PRACTICE_TRIALS ?? 3);
 let practiceCount = 0;
+const practiceRows = [];
 
 function finishPracticeOnly() {
   if (!practiceEl) return;
@@ -164,7 +165,7 @@ function finishPracticeOnly() {
     </div>
   `;
 
-  if (hiddenJson) hiddenJson.value = "";
+  if (hiddenJson) hiddenJson.value = JSON.stringify(practiceRows);
   show(nextBtn);
   setNextEnabled(true);
 }
@@ -211,6 +212,22 @@ function renderPracticeTrial() {
     const purchase = bid >= price;
     const payment = purchase ? price : 0;
     const remaining = Number((endowment - payment).toFixed(2));
+    const timestamp = new Date().toISOString();
+
+    practiceRows.push({
+      subject_id,
+      session_id,
+      snack_id: snack.id,
+      snack_label: snack.label,
+      bid: Number(bid).toFixed(2),
+      price_draw: Number(price).toFixed(2),
+      purchase_decision: purchase ? 1 : 0,
+      payment: Number(payment).toFixed(2),
+      remaining_cash: Number(remaining).toFixed(2),
+      trial_index: practiceCount + 1,
+      timestamp,
+      is_practice: 1,
+    });
 
     document.getElementById("practiceResult").innerHTML = `
       <div class="alert alert-info">
