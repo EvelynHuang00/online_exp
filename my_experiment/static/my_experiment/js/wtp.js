@@ -73,11 +73,15 @@ function renderSnackSlider({ container, snack, fieldName }) {
   img.style.display = "block";
   img.style.margin = "0 auto 12px auto";
 
+  const nameText = document.createElement("div");
+  nameText.textContent = snack.label;
+  nameText.style.fontWeight = "600";
+  nameText.style.margin = "8px 0 12px 0";
+
   const sliderRow = document.createElement("div");
   sliderRow.style.display = "flex";
   sliderRow.style.alignItems = "center";
   sliderRow.style.justifyContent = "center";
-  sliderRow.style.gap = "12px";
   sliderRow.style.width = "100%";
 
   const sliderDiv = document.createElement("div");
@@ -88,6 +92,7 @@ function renderSnackSlider({ container, snack, fieldName }) {
   sliderRow.appendChild(sliderDiv);
 
   block.appendChild(img);
+  block.appendChild(nameText);
   block.appendChild(sliderRow);
   container.appendChild(block);
 

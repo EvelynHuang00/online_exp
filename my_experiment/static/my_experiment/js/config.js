@@ -16,10 +16,10 @@ export const BDM = {
 };
 
 export const SNACKS = [
-  { id: "snack1", label: "Snack 1", img: "/static/my_experiment/assets/snacks/snack1.jpg" },
-  { id: "snack2", label: "Snack 2", img: "/static/my_experiment/assets/snacks/snack2.jpg" },
-  { id: "snack3", label: "Snack 3", img: "/static/my_experiment/assets/snacks/snack3.jpg" },
-  { id: "snack4", label: "Snack 4", img: "/static/my_experiment/assets/snacks/snack4.jpg" },
-  { id: "snack5", label: "Snack 5", img: "/static/my_experiment/assets/snacks/snack5.jpg" },
-  { id: "snack6", label: "Snack 6", img: "/static/my_experiment/assets/snacks/snack6.jpg" },
+  { id: "snack1", label: "A Teaspoon of Ketchup", img: "/static/my_experiment/assets/snacks/snack1.jpg" },
+  { id: "snack2", label: "One Oreo", img: "/static/my_experiment/assets/snacks/snack2.jpg" },
+  { id: "snack3", label: "One Potato Chip", img: "/static/my_experiment/assets/snacks/snack3.jpg" },
+  { id: "snack4", label: "One Saltine Cracker", img: "/static/my_experiment/assets/snacks/snack4.jpg" },
+  { id: "snack5", label: "One Grape", img: "/static/my_experiment/assets/snacks/snack5.jpg" },
+  { id: "snack6", label: "One Baby Carrot", img: "/static/my_experiment/assets/snacks/snack6.jpg" },
 ];

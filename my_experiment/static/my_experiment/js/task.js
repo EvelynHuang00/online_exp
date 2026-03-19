@@ -212,10 +212,6 @@ function finishRealTask() {
     hiddenJson.value = JSON.stringify(mainRowsOut);
   }
 
-  downloadBtn.onclick = () => {
-    downloadCSV(mainRowsOut, `choice_subject_${subject_id}.csv`);
-  };
-
   show(nextBtn);
   setNextEnabled(true);
   window.removeEventListener("keydown", onKeyDown);

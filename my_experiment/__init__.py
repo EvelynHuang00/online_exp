@@ -827,10 +827,10 @@ class Results(Page):
         )
     
 class BannerPracticeBDM(Page):
-    timeout_seconds = 2
+    pass
 
 class BannerPracticeBinary(Page):
-    timeout_seconds = 2
+    pass
 
 class PracticeCheckpoint(Page):
     form_model = "player"
@@ -899,7 +899,6 @@ class PracticeCheckpointRepeat(PracticeCheckpoint):
         )
 
 class BannerBeginReal(Page):
-    timeout_seconds = 2
 
     @staticmethod
     def is_displayed(player: Player):
