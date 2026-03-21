@@ -1,0 +1,40 @@
+{% load otree static %}
+
+{% block title %}{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'my_experiment/css/instructions.css' %}?v=20260320d">
+{% endblock %}
+
+{% block content %}
+<div class="instruction-shell">
+  <div class="instruction-card instruction-carousel" data-next-button-id="nextBtn">
+
+    <div class="instruction-slide active">
+      <h2>Bidding task completed!</h2>
+      <p>Next, you will choose between snacks.</p>
+      <p> On each screen, you will see two snacks.</p>
+      <p>
+        Choose the one you would most like to eat right now.
+      </p>
+    </div>
+
+    <div class="instruction-nav">
+      <button type="button" class="instruction-prev" aria-label="Previous slide">←</button>
+      <div class="instruction-indicator">Slide 1 of 1</div>
+      <button type="button" class="instruction-next" aria-label="Next slide">→</button>
+    </div>
+  </div>
+
+  <div style="margin-top:24px; text-align:center;">
+    <button class="otree-btn-next btn btn-primary" id="nextBtn" type="submit" disabled>Next</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  localStorage.setItem("phase", "real");
+</script>
+<script type="module" src="{% static 'my_experiment/js/instructions.js' %}?v=20260320d"></script>
+{% endblock %}

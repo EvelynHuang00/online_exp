@@ -4,45 +4,187 @@
 
 {% block styles %}
 <link rel="stylesheet" href="{% static 'global/mgslider.css' %}">
+<link rel="stylesheet" href="{% static 'my_experiment/css/instructions.css' %}?v=20260320d">
+
+<style>
+  .wtp-shell {
+    max-width: 980px;
+    margin: 40px auto 0 auto;
+    padding: 0 16px;
+  }
+
+  .wtp-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 18px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    padding: 32px 36px;
+  }
+
+  .wtp-snack-card {
+    position: relative;
+    transition: box-shadow 0.2s ease;
+  }
+
+  .wtp-snack-card.wtp-snack-missing {
+    animation: wtpSnackPulse 1s ease-in-out 2;
+    box-shadow: 0 0 0 3px rgba(255, 170, 0, 0.45);
+  }
+
+  @keyframes wtpSnackPulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgba(255, 170, 0, 0.2);
+    }
+    50% {
+      box-shadow: 0 0 0 6px rgba(255, 170, 0, 0.55);
+    }
+  }
+
+  #wtpHeader {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+
+  #wtpHeader h1 {
+    margin: 0 0 12px 0;
+    font-size: 2rem;
+    line-height: 1.2;
+  }
+
+  #wtpHeader p {
+    margin: 0;
+    font-size: 1.05rem;
+    line-height: 1.6;
+    color: #555;
+  }
+
+  #wtpForm {
+    margin-top: 8px;
+  }
+
+  #bdmResult {
+    margin-top: 20px !important;
+  }
+
+  #end {
+    margin-top: 24px !important;
+    text-align: center;
+  }
+
+  #simulateBtn,
+  #nextBtn {
+    min-width: 160px;
+    border-radius: 10px;
+    padding: 10px 22px;
+    font-size: 16px;
+  }
+
+  .wtp-next-wrap {
+    margin-top: 18px;
+    text-align: center;
+  }
+
+  .wtp-alert-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 20px;
+  }
+
+  .wtp-alert-overlay.visible {
+    display: flex;
+  }
+
+  .wtp-alert-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 28px 32px;
+    max-width: 420px;
+    width: 100%;
+    box-shadow: 0 18px 35px rgba(15, 23, 42, 0.18);
+    text-align: center;
+  }
+
+  .wtp-alert-card h3 {
+    margin: 0 0 12px 0;
+    font-size: 20px;
+  }
+
+  .wtp-alert-card p {
+    margin: 0 0 18px 0;
+    color: #475467;
+    line-height: 1.5;
+  }
+
+  .wtp-alert-card button {
+    min-width: 140px;
+  }
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="container">
-  <div id="wtpHeader" style="display:none;">
-    <h1>Willingness to Pay</h1>
-    <p>Please enter your maximum willingness to pay for each snack below.</p>
-  </div>
+<div class="wtp-shell" id="wtpApp" data-phase="{{ task_phase }}" data-practice-cycle="{{ practice_cycle }}">
+  <div class="wtp-card">
+    <div id="wtpHeader" style="display:none;">
+      <h1>Bidding</h1>
 
-  <div id="bdmPractice"></div>
-
-  <div id="wtpMain" style="display:none;">
-    <div id="wtpForm">
-      <div id="sliders_here"></div>
+      <div style="margin-top: 12px; line-height: 1.6; font-size: 17px;">
+        <p style="margin: 0 0 6px 0;">
+          Choose the highest price you would be willing to pay for each snack.
+        </p>
+        <p style="margin: 0;">
+          Drag the slider or click on the bar to set your price.
+        </p>
+      </div>
     </div>
 
-    <div id="bdmResult" style="margin-top:16px;"></div>
-    <input type="hidden" name="wtp_data_json" id="wtpDataJson" value="">
+    <div id="bdmPractice"></div>
 
-    <section id="end" style="margin-top:16px;">
-      <p id="simulateHelp" style="margin-top:16px;">
-        Click below to submit your answers.
-      </p>
+    <div id="wtpMain" style="display:none;">
+      <div id="wtpForm">
+        <div id="sliders_here"></div>
+      </div>
 
-      <button type="button" id="simulateBtn" class="btn btn-primary">
-        Submit Answers
-      </button>
-    </section>
+      <div id="bdmResult" style="margin-top:16px;"></div>
+      <input type="hidden" name="wtp_data_json" id="wtpDataJson" value="">
+
+      <section id="end" style="margin-top:16px;">
+        <button type="button" id="simulateBtn" class="btn btn-primary">
+          Submit Bids
+        </button>
+      </section>
+    </div>
   </div>
 
-  <div style="margin-top:12px;">
+  <div class="wtp-next-wrap" style="margin-top:12px;">
     <button class="otree-btn-next btn btn-primary" id="nextBtn" type="submit" disabled>
       Next
     </button>
+  </div>
+
+  <div id="wtpAlert" class="wtp-alert-overlay" role="dialog" aria-modal="true" aria-labelledby="wtpAlertTitle" aria-describedby="wtpAlertMessage">
+    <div class="wtp-alert-card">
+      <h3 id="wtpAlertTitle">Place bids for all snacks</h3>
+      <p id="wtpAlertMessage">You still need to place a bid for every snack before submitting.</p>
+      <button type="button" class="btn btn-primary" id="wtpAlertClose">Got it</button>
+    </div>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script src="{% static 'global/mgslider.js' %}"></script>
-<script type="module" src="{% static 'my_experiment/js/wtp.js' %}"></script>
+<script>
+  window.__TASK_PHASE__ = "{{ task_phase }}";
+  window.__PRACTICE_CYCLE__ = {{ practice_cycle }};
+  try {
+    localStorage.setItem("phase", window.__TASK_PHASE__);
+  } catch (e) {}
+</script>
+<script type="module" src="{% static 'my_experiment/js/wtp.js' %}?v=20260320c"></script>
 {% endblock %}

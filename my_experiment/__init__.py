@@ -41,6 +41,31 @@ class C(BaseConstants):
     # These IDs must match the item IDs used in the frontend files.
     SNACK_IDS = ["snack1", "snack2", "snack3", "snack4", "snack5", "snack6"]
 
+    # Human-readable labels for exports and participant-facing pages.
+    SNACK_LABEL_BY_ID = {
+        "snack1": "A Teaspoon of Ketchup",
+        "snack2": "One Oreo",
+        "snack3": "One Potato Chip",
+        "snack4": "One Saltine Cracker",
+        "snack5": "One Grape",
+        "snack6": "One Baby Carrot",
+        "practice_snack1": "Mini Pretzel Twist",
+        "practice_snack2": "One Gummy Bear",
+        "practice_snack3": "One Almond",
+    }
+
+    SNACK_IMAGE_BY_ID = {
+        "snack1": "/static/my_experiment/assets/snacks/snack1.png",
+        "snack2": "/static/my_experiment/assets/snacks/snack2.jpg",
+        "snack3": "/static/my_experiment/assets/snacks/snack3.jpg",
+        "snack4": "/static/my_experiment/assets/snacks/snack4.jpg",
+        "snack5": "/static/my_experiment/assets/snacks/snack5.jpg",
+        "snack6": "/static/my_experiment/assets/snacks/snack6.jpg",
+        "practice_snack1": "/static/my_experiment/assets/snacks/practice_snack1.png",
+        "practice_snack2": "/static/my_experiment/assets/snacks/practice_snack2.png",
+        "practice_snack3": "/static/my_experiment/assets/snacks/practice_snack3.png",
+    }
+
     # Stage 3 policy: number of repeat cycles preallocated in page_sequence.
     # oTree page_sequence is static, so strict infinity is not possible.
     # Set this high to make repeat effectively always available in practice.
@@ -81,6 +106,9 @@ class Player(BasePlayer):
 
     # Whether the participant has entered the real block.
     real_started = models.BooleanField(initial=False)
+
+    # Current practice cycle counter (starts at 1, increments on each repeat).
+    practice_cycle_index = models.IntegerField(initial=1)
 
     # -------------------------------------------------------------------------
     # Raw frontend payloads
@@ -144,6 +172,10 @@ class Player(BasePlayer):
         if real_started is None:
             self.real_started = False
 
+        practice_cycle_index = self.field_maybe_none("practice_cycle_index")
+        if practice_cycle_index in (None, ) or int(practice_cycle_index) < 1:
+            self.practice_cycle_index = 1
+
 # =============================================================================
 # EXTRA TABLES
 # =============================================================================
@@ -162,6 +194,7 @@ class ChoiceTrial(ExtraModel):
     subject_id = models.StringField()
     # Distinguish practice vs real for live-save and dedup safety.
     phase = models.StringField(initial="real")
+    practice_cycle = models.IntegerField(initial=1)
 
     trial_index = models.IntegerField()
     pair_id = models.StringField()
@@ -238,6 +271,22 @@ def _get_session_id(player: Player) -> str:
     return getattr(player.session, "code", None) or "UNKNOWN_SESSION"
 
 
+def _snack_label(snack_id: str) -> str:
+    """Return human-readable snack label for a snack ID."""
+    sid = str(snack_id or "").strip()
+    if not sid:
+        return ""
+    return C.SNACK_LABEL_BY_ID.get(sid, sid)
+
+
+def _snack_image(snack_id: str) -> str:
+    """Return snack image URL for a snack ID."""
+    sid = str(snack_id or "").strip()
+    if not sid:
+        return ""
+    return C.SNACK_IMAGE_BY_ID.get(sid, "")
+
+
 # =============================================================================
 # INPUT READERS
 # =============================================================================
@@ -261,6 +310,16 @@ def _current_backend_phase(player: Player) -> str:
     """Return backend phase label for task writes and live saves."""
     player.ensure_backend_state_initialized()
     return "real" if bool(player.field_maybe_none("real_started")) else "practice"
+
+
+def _current_practice_cycle(player: Player) -> int:
+    """Return the participant's current practice cycle counter (>=1)."""
+    player.ensure_backend_state_initialized()
+    cycle = int(player.field_maybe_none("practice_cycle_index") or 1)
+    if cycle < 1:
+        cycle = 1
+        player.practice_cycle_index = 1
+    return cycle
 
 
 def _read_wtp_rows_from_player(player: Player):
@@ -326,11 +385,20 @@ def _normalize_wtp_rows(raw_rows):
         except Exception:
             price_draw = None
 
+        practice_cycle_raw = row.get("practice_cycle", None)
+        try:
+            practice_cycle = int(practice_cycle_raw)
+            if practice_cycle < 1:
+                practice_cycle = 1
+        except Exception:
+            practice_cycle = 1
+
         normalized.append(
             dict(
                 snack_id=snack_id,
                 bid_value=bid_value,
                 price_draw=price_draw,
+                practice_cycle=practice_cycle,
             )
         )
 
@@ -454,6 +522,7 @@ def _read_trials_for_player(player: Player, *, phase: str = "real"):
                 dict(
                     phase=trial_phase,
                     is_practice=1 if trial_phase == "practice" else 0,
+                    practice_cycle=int(getattr(trial, "practice_cycle", 1) or 1),
                     is_timeout=1 if trial.is_timeout else 0,
                     chosen_item_id=trial.chosen_item or "",
                     left_item_id=trial.left_item_id,
@@ -485,6 +554,10 @@ class Consent(Page):
         player.ensure_backend_state_initialized()
 
 
+class InstructionsOverview(Page):
+    pass
+
+
 class InstructionsBDM(Page):
     pass
 
@@ -510,8 +583,18 @@ class WTP(Page):
             return
 
         player.current_phase = "practice"
-        player.wtp_data_json_practice = raw
+        previous_rows = _parse_json_list(player.field_maybe_none("wtp_data_json_practice"))
+        new_rows = _parse_json_list(raw)
+        combined_rows = previous_rows + new_rows
+        player.wtp_data_json_practice = json.dumps(combined_rows) if combined_rows else ""
         player.wtp_data_json = ""
+
+    @staticmethod
+    def vars_for_template(player: Player):
+        return dict(
+            task_phase=_current_backend_phase(player),
+            practice_cycle=_current_practice_cycle(player),
+        )
 
 
 class InstructionsBinary(Page):
@@ -553,12 +636,15 @@ def _apply_practice_checkpoint_decision(player: Player, *, allow_repeat: bool):
 
     player.practice_decision = decision
     player.practice_completed = True
+    current_cycle = _current_practice_cycle(player)
 
     if decision == "repeat":
         player.practice_repeat_count = repeat_count + 1
+        player.practice_cycle_index = current_cycle + 1
         player.current_phase = "practice"
         player.real_started = False
     else:
+        player.practice_cycle_index = 1
         player.current_phase = "real"
         player.real_started = True
 
@@ -573,6 +659,13 @@ class MyPage(Page):
     """
     form_model = "player"
     form_fields = ["choice_data_json"]
+
+    @staticmethod
+    def vars_for_template(player: Player):
+        return dict(
+            task_phase=_current_backend_phase(player),
+            practice_cycle=_current_practice_cycle(player),
+        )
 
     @staticmethod
     def before_next_page(player: Player, timeout_happened):
@@ -627,6 +720,10 @@ class MyPage(Page):
         if trial_index <= 0:
             return
 
+        practice_cycle = int(data.get("practice_cycle", 0) or 0)
+        if practice_cycle <= 0:
+            practice_cycle = _current_practice_cycle(player) if phase == "practice" else 1
+
         pair_id = str(data.get("pair_id", "") or "")
         left_item_id = str(data.get("left_item_id", "") or "")
         right_item_id = str(data.get("right_item_id", "") or "")
@@ -641,15 +738,21 @@ class MyPage(Page):
 
         timestamp_utc = str(data.get("timestamp_utc", "") or "")
 
-        existing = ChoiceTrial.filter(player=player, phase=phase, trial_index=trial_index)
+        existing = ChoiceTrial.filter(
+            player=player,
+            phase=phase,
+            practice_cycle=practice_cycle,
+            trial_index=trial_index,
+        )
         if existing:
-            return dict(ok=True, dedup=True)
+            return {player.id_in_group: dict(ok=True, dedup=True)}
 
         ChoiceTrial.create(
             player=player,
             session_id=session_id,
             subject_id=subject_id,
             phase=phase,
+             practice_cycle=practice_cycle,
             trial_index=trial_index,
             pair_id=pair_id,
             left_item_id=left_item_id,
@@ -659,7 +762,7 @@ class MyPage(Page):
             is_timeout=is_timeout,
             timestamp_utc=timestamp_utc,
         )
-        return dict(ok=True, saved=True)
+        return {player.id_in_group: dict(ok=True, saved=True)}
 
 
 class ResultsWaitPage(WaitPage):
@@ -672,6 +775,8 @@ class ResultsWaitPage(WaitPage):
     3) Run the allocation rule.
     4) Store each participant's final assignment.
     """
+
+    template_name = "my_experiment/ResultsWaitPage.html"
 
     def after_all_players_arrive(self):
         players = self.group.get_players()
@@ -798,14 +903,21 @@ class Results(Page):
     @staticmethod
     def vars_for_template(player: Player):
         try:
-            ranking = json.loads(player.inferred_ranking_json or "[]")
+            ranking_ids = json.loads(player.inferred_ranking_json or "[]")
         except Exception:
-            ranking = []
+            ranking_ids = []
+
+        ranking_labels = [_snack_label(sid) for sid in ranking_ids]
 
         try:
             win_counts = json.loads(player.win_counts_json or "{}")
         except Exception:
             win_counts = {}
+
+        win_counts_labeled = {
+            _snack_label(snack_id): count
+            for snack_id, count in win_counts.items()
+        }
 
         debug_source = player.choice_data_json or ""
         real_data_warning = player.participant.vars.get("real_data_warning", "")
@@ -817,13 +929,18 @@ class Results(Page):
         return dict(
             show_results_debug=show_results_debug,
             debug_json_len=len(debug_source),
-            inferred_ranking=ranking,
-            win_counts=win_counts,
-            assigned_snack=player.assigned_snack,
+            inferred_ranking=ranking_labels,
+            inferred_ranking_ids=ranking_ids,
+            win_counts=win_counts_labeled,
+            win_counts_ids=win_counts,
+            assigned_snack=_snack_label(player.assigned_snack),
+            assigned_snack_id=player.assigned_snack,
+            assigned_snack_img=_snack_image(player.assigned_snack),
             rsd_order=player.rsd_order,
             assigned_rank_pos=player.assigned_rank_pos,
             allocation_algo=C.ALLOCATION_ALGO,
             real_data_warning=real_data_warning,
+            from_wait_page=True,  # Only Results page reached after ResultsWaitPage
         )
     
 class BannerPracticeBDM(Page):
@@ -913,6 +1030,14 @@ class WTPReal(WTP):
         return bool(player.field_maybe_none("real_started"))
 
 
+class InstructionsRealChoiceStart(Page):
+    template_name = "my_experiment/InstructionsRealChoiceStart.html"
+
+    @staticmethod
+    def is_displayed(player: Player):
+        return bool(player.field_maybe_none("real_started"))
+
+
 class MyPageReal(MyPage):
     template_name = "my_experiment/MyPage.html"
 
@@ -932,6 +1057,7 @@ _repeat_cycle_pages = [
 
 page_sequence = [
     Consent,
+    InstructionsOverview,
 
     InstructionsBDM,
     BannerPracticeBDM,
@@ -948,6 +1074,7 @@ page_sequence = [
     BannerBeginReal,
 
     WTPReal,             # real BDM/WTP (same page, but JS in “real mode” now)
+    InstructionsRealChoiceStart,
     MyPageReal,          # real binary choice (same page, “real mode” now)
 
     ResultsWaitPage,
@@ -1011,11 +1138,15 @@ def custom_export_choice_trials(players):
         "session_id",
         "subject_id",
         "phase",
+        "practice_cycle",
         "trial_index",
         "pair_id",
         "left_item_id",
+        "left_item_label",
         "right_item_id",
+        "right_item_label",
         "chosen_item",
+        "chosen_item_label",
         "rt_ms",
         "is_timeout",
     ]
@@ -1028,13 +1159,20 @@ def custom_export_choice_trials(players):
         exported_keys = set()
 
         if trials:
-            for trial in sorted(trials, key=lambda x: x.trial_index):
+            for trial in sorted(
+                trials,
+                key=lambda x: (int(getattr(x, "practice_cycle", 1) or 1), x.trial_index),
+            ):
                 trial_phase = (getattr(trial, "phase", None) or "real").strip().lower()
                 if trial_phase not in ("practice", "real"):
                     trial_phase = "real"
 
+                practice_cycle = int(getattr(trial, "practice_cycle", 1) or 1)
+                practice_cycle_out = "" if trial_phase == "real" else practice_cycle
+
                 key = (
                     trial_phase,
+                    practice_cycle,
                     trial.trial_index,
                     trial.pair_id,
                     trial.left_item_id,
@@ -1051,11 +1189,15 @@ def custom_export_choice_trials(players):
                     session_id,
                     subject_id,
                     trial_phase,
+                    practice_cycle_out,
                     trial.trial_index,
                     trial.pair_id,
                     trial.left_item_id,
+                    _snack_label(trial.left_item_id),
                     trial.right_item_id,
+                    _snack_label(trial.right_item_id),
                     trial.chosen_item,
+                    _snack_label(trial.chosen_item),
                     trial.rt_ms,
                     1 if trial.is_timeout else 0,
                 ]
@@ -1089,9 +1231,12 @@ def custom_export_choice_trials(players):
             chosen_item = row.get("chosen_item_id", "")
             rt_ms = row.get("rt_ms", "")
             is_timeout = row.get("is_timeout", "")
+            practice_cycle = int(row.get("practice_cycle", 1) or 1)
+            practice_cycle_out = "" if phase_label == "real" else practice_cycle
 
             key = (
                 phase_label,
+                practice_cycle,
                 trial_index,
                 pair_id,
                 left_item_id,
@@ -1108,11 +1253,15 @@ def custom_export_choice_trials(players):
                 session_id,
                 subject_id,
                 phase_label,
+                practice_cycle_out,
                 trial_index,
                 pair_id,
                 left_item_id,
+                _snack_label(left_item_id),
                 right_item_id,
+                _snack_label(right_item_id),
                 chosen_item,
+                _snack_label(chosen_item),
                 rt_ms,
                 is_timeout,
             ]
@@ -1126,6 +1275,7 @@ def custom_export_ranking(players):
         "session_id",
         "subject_id",
         "snack_id",
+        "snack_label",
         "win_count",
         "tie_group_id",
         "final_rank",
@@ -1138,6 +1288,7 @@ def custom_export_ranking(players):
                 row.get("session_id", _get_session_id(player)),
                 row.get("subject_id", _get_subject_id(player)),
                 row.get("snack_id", ""),
+                _snack_label(row.get("snack_id", "")),
                 row.get("win_count", ""),
                 row.get("tie_group_id", ""),
                 row.get("final_rank", ""),
@@ -1154,7 +1305,16 @@ def custom_export_wtp(players):
     Fallback source:
         wtp_data_json submitted by the frontend
     """
-    yield ["session_id", "subject_id", "phase", "snack_id", "bid_value", "price_draw"]
+    yield [
+        "session_id",
+        "subject_id",
+        "phase",
+        "practice_cycle",
+        "snack_id",
+        "snack_label",
+        "bid_value",
+        "price_draw",
+    ]
 
     for player in players:
         session_id = _get_session_id(player)
@@ -1170,7 +1330,9 @@ def custom_export_wtp(players):
                     session_id,
                     subject_id,
                     "real",
+                    "",
                     row.snack_id,
+                    _snack_label(row.snack_id),
                     row.bid_value,
                     row.price_draw,
                 ]
@@ -1180,11 +1342,14 @@ def custom_export_wtp(players):
             normalized_rows = _normalize_wtp_rows(raw_rows)
 
             for row in normalized_rows:
+                practice_cycle = int(row.get("practice_cycle", 1) or 1)
                 yield [
                     session_id,
                     subject_id,
                     "real",
+                    "",
                     row.get("snack_id", ""),
+                    _snack_label(row.get("snack_id", "")),
                     row.get("bid_value", ""),
                     row.get("price_draw", ""),
                 ]
@@ -1192,11 +1357,14 @@ def custom_export_wtp(players):
         practice_raw_rows = _read_wtp_rows_from_player_practice(player)
         practice_normalized_rows = _normalize_wtp_rows(practice_raw_rows)
         for row in practice_normalized_rows:
+            practice_cycle = int(row.get("practice_cycle", 1) or 1)
             yield [
                 session_id,
                 subject_id,
                 "practice",
+                practice_cycle,
                 row.get("snack_id", ""),
+                _snack_label(row.get("snack_id", "")),
                 row.get("bid_value", ""),
                 row.get("price_draw", ""),
             ]
@@ -1211,6 +1379,7 @@ def custom_export_matching_rsd(players):
         "subject_id",
         "serial_position",
         "assigned_snack_id",
+        "assigned_snack_label",
         "assigned_rank_pos",
     ]
 
@@ -1220,6 +1389,7 @@ def custom_export_matching_rsd(players):
             _get_subject_id(player),
             player.rsd_order,
             player.assigned_snack,
+            _snack_label(player.assigned_snack),
             player.assigned_rank_pos,
         ]
 
@@ -1235,6 +1405,7 @@ def custom_export_matching_da(players):
         "session_id",
         "subject_id",
         "assigned_snack_id",
+        "assigned_snack_label",
         "assigned_rank_pos",
         "consistency_index",
     ]
@@ -1243,6 +1414,7 @@ def custom_export_matching_da(players):
         yield [
             _get_session_id(player),
             _get_subject_id(player),
+            "",
             "",
             "",
             "",

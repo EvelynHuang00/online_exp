@@ -26,3 +26,18 @@
 }
 .hint { margin-top: 12px; color: #555; }
 #timer { margin-top: 8px; color: #555; }
+
+.bdm-outcome {
+  margin-top: 16px;
+  padding: 18px 22px;
+  border-radius: 12px;
+  border: 1px solid #d9e8ff;
+  background: #f6fbff;
+  font-size: 1.15rem;
+  line-height: 1.6;
+}
+
+.bdm-outcome h4 {
+  margin: 0 0 8px 0;
+  font-size: 1.2rem;
+}

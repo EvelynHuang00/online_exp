@@ -1,16 +1,72 @@
 {% load otree static %}
 
-{% block title %}Instructions: Snack Choices{% endblock %}
+{% block title %}{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'my_experiment/css/instructions.css' %}?v=20260320d">
+{% endblock %}
 
 {% block content %}
-<div class="container">
-  <p>In this task, you will see two snacks on the screen. Please choose the one you would prefer to eat.</p>
-  <ul>
-    <li>Press <strong>←</strong> to choose the snack on the left.</li>
-    <li>Press <strong>→</strong> to choose the snack on the right.</li>
-    <li>Mouse clicking is disabled, so please use your keyboard to respond.</li>
-    <li>If you do not make a choice before time runs out, the trial will be recorded as <strong>no response</strong>.</li>
-  </ul>
-  {{ next_button }}
+<div class="instruction-shell">
+  <div class="instruction-card instruction-carousel" data-next-button-id="nextBtn">
+
+    <div class="instruction-slide active">
+      <h2>Snack choices</h2>
+      <p>In this part, you will see two snacks on each screen:</p>
+      <div style="text-align:center; margin:20px 0;">
+        <img
+          src="{% static 'my_experiment/assets/instruction_img/choice_trial_example.png' %}"
+          alt="Example of choice screen"
+          style="max-width:80%; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.1);"
+        >
+      </div>
+      <p>Your job is to choose the snack you would rather eat right now.</p>
+    </div>
+
+    <div class="instruction-slide">
+      <h2>How to choose</h2>
+      <div style="text-align:center; margin:20px 0;">
+        <img
+          src="{% static 'my_experiment/assets/instruction_img/choice_trial_example.png' %}"
+          alt="Example of choice screen"
+          style="max-width:80%; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.1);"
+        >
+      </div>
+      <p>Use the keyboard arrow keys to make your choice.</p>
+      <ul>
+        <li>Left snack = press the left arrow key (←)</li>
+        <li>Right snack = press the right arrow key (→)</li>
+      </ul>
+      <p>As soon as you press ← or →, your choice is made and the next screen will appear.</p>
+    </div>
+
+    <div class="instruction-slide">
+      <h2>Answer in time</h2>
+      <p>You will have some time to make each choice, but it is not unlimited.</p>
+      <p>There is usually enough time to decide.</p>
+      <p>If you do not answer in time, the task will move on to the next screen.</p>
+    </div>
+
+    <div class="instruction-slide">
+      <h2>Take a moment</h2>
+      <p>You can use the arrow buttons to review these instruction pages at any time.</p>
+      <p>Make sure everything is clear before moving on.</p>
+      <p>When you feel ready, click <strong>Next</strong> to start a practice round.</p>
+    </div>
+
+    <div class="instruction-nav">
+      <button type="button" class="instruction-prev" aria-label="Previous slide">←</button>
+      <div class="instruction-indicator">Slide 1 of 6</div>
+      <button type="button" class="instruction-next" aria-label="Next slide">→</button>
+    </div>
+  </div>
+
+  <div style="margin-top:24px; text-align:center;">
+    <button class="otree-btn-next btn btn-primary" id="nextBtn" type="submit" disabled>Next</button>
+  </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{% static 'my_experiment/js/instructions.js' %}?v=20260320d"></script>
 {% endblock %}

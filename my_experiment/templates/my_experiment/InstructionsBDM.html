@@ -1,68 +1,99 @@
 {% load otree static %}
 
-{% block title %}
-Instructions: Willingness to Pay (BDM)
+{% block title %}{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'my_experiment/css/instructions.css' %}?v=20260320d">
 {% endblock %}
 
 {% block content %}
-<div class="container">
-  <p>
-    In this part, you will report how much each snack is worth to you.
-    You will do <strong>3 practice rounds</strong> first, then you will enter bids for all snacks.
-  </p>
+<div class="instruction-shell">
+  <div class="instruction-card instruction-carousel" data-next-button-id="nextBtn">
 
-  <h4>What is a “bid”?</h4>
-  <p>
-    Your bid for a snack should be the <strong>maximum amount of money you would be willing to pay</strong>
-    to receive that snack. You can enter bids with cents (e.g., 2.75).
-  </p>
+    <div class="instruction-slide active">
+      <h2>Welcome to the bidding part</h2>
+      <p>In this part, you will tell us how much you want each snack.</p>
+      <p>You will choose one price for each snack.</p>
+      <p>Your price can be anywhere from $0.00 to $1.00.</p>
+    </div>
 
-  <h4>How the BDM rule works</h4>
-  <p>
-    After you enter your bid, the computer will draw a <strong>random price</strong> for a snack.
-    This random price is independent of your bid.
-  </p>
+    <div class="instruction-slide">
+      <h2>How to choose a price</h2>
+      <p>Each snack has a slider.</p>
+      <p>You can either drag the slider or click on the bar to choose your price.</p>
+      <p>This is an example screen:</p>
+      <div style="text-align:center; margin:20px 0;">
+        <img
+          src="{% static 'my_experiment/assets/instruction_img/slider_example.png' %}"
+          alt="Example of bidding screen"
+          style="max-width:80%; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.1);"
+        >
+      </div>
+      <p>The number below the slider shows your price.</p>
+      <p>Choose the most you would be willing to pay for that snack.</p>
+      <p>You can choose in steps of $0.05.</p>
+    </div>
 
-  <ul>
-    <li>
-      If your bid is <strong>greater than or equal to</strong> the random price, you <strong>buy</strong> the snack and
-      you pay the <strong>random price</strong> (not your bid).
-    </li>
-    <li>
-      If your bid is <strong>less than</strong> the random price, you <strong>do not buy</strong> the snack and you pay nothing.
-    </li>
-  </ul>
+    <div class="instruction-slide">
+      <h2>What to do</h2>
+      <p>This is an example screen:</p>
+      <div style="text-align:center; margin:20px 0;">
+        <img
+          src="{% static 'my_experiment/assets/instruction_img/BDM_example.png' %}"
+          alt="Example of bidding screen"
+          style="max-width:80%; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.1);"
+        >
+      </div>
+      <p>Choose one price for every snack on the page.</p>
+      <p>When you are done, click <strong>Submit Bids</strong>.</p>
+      <p>You will then see the result on the screen.</p>
+      <p>After that, the <strong>Next</strong> button will appear so you can continue.</p>
+      <p>Make sure you are happy with your answers before you submit.</p>
+    </div>
 
-  <h4>Important: why you should bid truthfully</h4>
-  <p>
-    This rule is designed so that your best strategy is to enter your <strong>true willingness to pay</strong>:
-  </p>
-  <ul>
-    <li>
-      If you bid <strong>too low</strong>, you may miss chances to buy a snack at a low random price that you actually would have wanted.
-    </li>
-    <li>
-      If you bid <strong>too high</strong>, you might end up buying a snack at a random price that is higher than what it is worth to you.
-    </li>
-  </ul>
-  <p>
-    Because you pay the random price (not your bid), the safest and best approach is:
-    <strong>bid the maximum you are truly willing to pay</strong>.
-  </p>
+    <div class="instruction-slide">
+      <h2>How the result is decided</h2>
+      <p>After you submit, the computer will randomly pick one snack.</p>
+      <p>Then it will randomly choose a price for that snack.</p>
+      <p>If your bid is the same as or higher than that price, you get the snack and pay that random price.</p>
+      <p>If your bid is lower than that price, you do not get the snack.</p>
+    </div>
 
-  <h4>What happens in the main task</h4>
-  <p>
-    You will enter bids for <strong>all snacks</strong>. Then the computer will randomly select
-    <strong>one snack</strong> to be the <strong>binding snack</strong> (the only one that is used for the purchase decision).
-    A random price will be drawn for that binding snack, and the buy/no-buy decision will be determined using the rule above.
-  </p>
+    <div class="instruction-slide">
+      <h2>Why you should bid honestly</h2>
+      <p>Your bid should be the most you truly think the snack is worth to you.</p>
+      <p>You do not pay your own bid.</p>
+      <p>If you get the snack, you pay the random price chosen by the computer.</p>
+      <p>Because of this, the best choice is to enter your real price for each snack.</p>
+    </div>
 
-  <h4>Practice rounds</h4>
-  <p>
-    In the practice rounds, you will try the same rule with example snacks so you can see how the random price and decision work.
-    Practice rounds are only for learning.
-  </p>
+    <div class="instruction-slide">
+      <h2>Why guessing higher or lower does not help</h2>
+      <p>If you bid higher than your real price, you might end up getting a snack for more than you really wanted to pay.</p>
+      <p>If you bid lower than your real price, you might miss a chance to get a snack that you would have wanted at that price.</p>
+      <p>So the best choice is simple: bid what the snack is truly worth to you.</p>
+    </div>
 
-  {{ next_button }}
+    <div class="instruction-slide">
+      <h2>Take a moment</h2>
+      <p>You can use the arrow buttons to review these instruction pages at any time.</p>
+      <p>Make sure everything is clear before moving on.</p>
+      <p>When you feel ready, click <strong>Next</strong> to start a practice round.</p>
+    </div>
+
+    <div class="instruction-nav">
+      <button type="button" class="instruction-prev" aria-label="Previous slide">←</button>
+      <div class="instruction-indicator">Slide 1 of 8</div>
+      <button type="button" class="instruction-next" aria-label="Next slide">→</button>
+    </div>
+  </div>
+
+  <div style="margin-top:24px; text-align:center;">
+    <button class="otree-btn-next btn btn-primary" id="nextBtn" type="submit" disabled>Next</button>
+  </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{% static 'my_experiment/js/instructions.js' %}?v=20260320d"></script>
 {% endblock %}

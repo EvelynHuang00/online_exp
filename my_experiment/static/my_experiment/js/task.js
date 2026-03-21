@@ -1,5 +1,5 @@
 // my_experiment/static/my_experiment/js/task.js
-import { EXPERIMENT, SNACKS } from "./config.js";
+import { EXPERIMENT, SNACKS, PRACTICE_SNACKS } from "./config.js";
 import { buildTrials } from "./trialgen.js";
 import { downloadCSV } from "./export.js";
 
@@ -10,13 +10,58 @@ const session_id = localStorage.getItem("session_id") || "session_001";
 
 const FASTER_MS = 2000;
 
-const snackById = new Map(SNACKS.map((s) => [s.id, s]));
+function resolvePhase() {
+  let src = null;
+  const root = document.getElementById("taskApp");
+  if (root && root.dataset && root.dataset.phase) {
+    src = root.dataset.phase;
+  } else if (typeof window !== "undefined" && window.__TASK_PHASE__) {
+    src = window.__TASK_PHASE__;
+  } else {
+    try {
+      src = localStorage.getItem("phase");
+    } catch (e) {}
+  }
+
+  let phaseValue = (src || "practice").toString().toLowerCase();
+  if (phaseValue !== "real") {
+    phaseValue = "practice";
+  }
+
+  try {
+    localStorage.setItem("phase", phaseValue);
+  } catch (e) {}
+
+  return phaseValue;
+}
+
+function resolvePracticeCycle() {
+  let value = 1;
+  const root = document.getElementById("taskApp");
+  if (root && root.dataset && root.dataset.practiceCycle) {
+    value = Number(root.dataset.practiceCycle);
+  } else if (typeof window !== "undefined" && window.__PRACTICE_CYCLE__ != null) {
+    value = Number(window.__PRACTICE_CYCLE__);
+  }
+
+  if (!Number.isFinite(value) || value < 1) {
+    value = 1;
+  }
+
+  return Math.floor(value);
+}
+
+const phase = resolvePhase();
+const practiceCycle = resolvePracticeCycle();
+const isReal = phase === "real";
+const activeSnacks = isReal ? SNACKS : PRACTICE_SNACKS;
+
+const snackById = new Map(activeSnacks.map((s) => [s.id, s]));
 
 const statusEl = $("status");
 const fixationEl = $("fixation");
 const choiceEl = $("choice");
 const fasterEl = $("faster");
-const endEl = $("end");
 const mainHintEl = $("mainHint");
 const timerEl = $("timer");
 const downloadBtn = $("downloadBtn");
@@ -28,14 +73,10 @@ const rightImg = $("rightImg");
 const leftLabel = $("leftLabel");
 const rightLabel = $("rightLabel");
 
-const phase = localStorage.getItem("phase") || "practice";
-const isReal = phase === "real";
-
-const allTrials = buildTrials();
-const PRACTICE_N = Math.min(
-  Number(EXPERIMENT.PRACTICE_BINARY_TRIALS ?? 5),
-  allTrials.length
-);
+const allTrials = buildTrials(activeSnacks);
+const PRACTICE_N = isReal
+  ? 0
+  : Math.min(Number(EXPERIMENT.PRACTICE_BINARY_TRIALS ?? 5), allTrials.length);
 
 const practiceTrials = allTrials.slice(0, PRACTICE_N);
 const mainTrials = allTrials.slice(PRACTICE_N);
@@ -45,7 +86,24 @@ const mainTrials = allTrials.slice(PRACTICE_N);
 let isPracticeBlock = !isReal;
 let trials = isReal ? mainTrials : practiceTrials;
 
+// Store the actual number of trials for display purposes
+const practiceTrialCount = practiceTrials.length;
+const mainTrialCount = mainTrials.length;
+
+console.log(`[Task Init] Phase: ${phase}, cycle: ${practiceCycle}, isReal: ${isReal}, isPracticeBlock: ${isPracticeBlock}, activeSnacks: ${activeSnacks.length}, allTrials: ${allTrials.length}, practiceTrials: ${practiceTrialCount}, mainTrials: ${mainTrialCount}, trials: ${trials.length}`);
+
 const rows = [];
+
+window.liveRecv = function (data) {
+  if (!data || typeof data !== "object") return;
+  if (data.ok) {
+    if (data.saved) {
+      console.debug("[liveRecv] Trial saved");
+    } else if (data.dedup) {
+      console.debug("[liveRecv] Duplicate trial ignored");
+    }
+  }
+};
 
 let trialIndex = -1;
 let awaitingResponse = false;
@@ -72,10 +130,26 @@ function setChoiceScreen(trial) {
   const L = snackById.get(trial.left_item_id);
   const R = snackById.get(trial.right_item_id);
 
-  leftImg.src = L.img;
-  rightImg.src = R.img;
-  leftLabel.textContent = L.label;
-  rightLabel.textContent = R.label;
+  if (!L) {
+    console.error(`[setChoiceScreen] Left snack not found: ${trial.left_item_id}. Available snacks:`, Array.from(snackById.keys()));
+    return false;
+  }
+  if (!R) {
+    console.error(`[setChoiceScreen] Right snack not found: ${trial.right_item_id}. Available snacks:`, Array.from(snackById.keys()));
+    return false;
+  }
+
+  try {
+    leftImg.src = L.img;
+    rightImg.src = R.img;
+    leftLabel.textContent = L.label;
+    rightLabel.textContent = R.label;
+    console.log(`[setChoiceScreen] Loaded trial ${trialIndex + 1}: ${trial.left_item_id} vs ${trial.right_item_id}`);
+    return true;
+  } catch (e) {
+    console.error(`[setChoiceScreen] Error setting display:`, e);
+    return false;
+  }
 }
 
 function startCountdown() {
@@ -122,6 +196,7 @@ function recordResponse({ chosen_item_id, is_timeout, advance = "normal" }) {
     session_id,
     trial_index: trialIndex + 1,
     is_practice: isPracticeBlock ? 1 : 0,
+    practice_cycle: isPracticeBlock ? practiceCycle : 1,
     left_item_id: trial.left_item_id,
     right_item_id: trial.right_item_id,
     chosen_item_id: is_timeout ? "" : chosen_item_id,
@@ -137,6 +212,7 @@ function recordResponse({ chosen_item_id, is_timeout, advance = "normal" }) {
     liveSend({
       type: "choice_trial",
       phase: phaseLabel,
+      practice_cycle: isPracticeBlock ? practiceCycle : 1,
       trial_index: trialIndex + 1,
       pair_id: trial.pair_id,
       left_item_id: trial.left_item_id,
@@ -178,38 +254,40 @@ function finishPracticeOnly() {
   hide(fixationEl);
   hide(choiceEl);
   hide(fasterEl);
-  show(endEl);
 
   if (statusEl) {
-    statusEl.textContent = "Practice complete.";
+    statusEl.textContent = "";
   }
-
-  const msg = document.createElement("div");
-  msg.style.marginTop = "12px";
-  msg.innerHTML = `
-    <p>You have completed the practice trials.</p>
-    <p>Click <strong>Next</strong> to continue.</p>
-  `;
-  endEl.innerHTML = "";
-  endEl.appendChild(msg);
 
   const practiceRowsOut = rows.filter((r) => r.is_practice === 1);
   if (hiddenJson) hiddenJson.value = JSON.stringify(practiceRowsOut);
+  window.removeEventListener("keydown", onKeyDown);
+
+  const form = document.querySelector("form");
+  if (form) {
+    form.submit();
+    return;
+  }
+
   show(nextBtn);
   setNextEnabled(true);
-  window.removeEventListener("keydown", onKeyDown);
 }
 
 function finishRealTask() {
   hide(fixationEl);
   hide(choiceEl);
   hide(fasterEl);
-  show(endEl);
 
   const mainRowsOut = rows.filter((r) => r.is_practice === 0);
 
   if (hiddenJson) {
     hiddenJson.value = JSON.stringify(mainRowsOut);
+  }
+
+  const form = document.querySelector("form");
+  if (form) {
+    form.submit();
+    return;
   }
 
   show(nextBtn);
@@ -231,7 +309,7 @@ function nextTrial() {
   }
 
   if (isPracticeBlock) {
-    statusEl.textContent = `Practice: Trial ${trialIndex + 1} / ${trials.length}`;
+    statusEl.textContent = `Practice: Trial ${trialIndex + 1} / ${practiceTrialCount}`;
     hide(mainHintEl);
   } else {
     statusEl.textContent = "";
@@ -245,7 +323,12 @@ function nextTrial() {
   setTimeout(() => {
     hide(fixationEl);
 
-    setChoiceScreen(trials[trialIndex]);
+    const screenSuccess = setChoiceScreen(trials[trialIndex]);
+    if (!screenSuccess) {
+      console.warn(`[nextTrial] Failed to load trial ${trialIndex + 1}, skipping to next`);
+      recordResponse({ chosen_item_id: null, is_timeout: true, advance: "normal" });
+      return;
+    }
     show(choiceEl);
 
     awaitingResponse = true;
@@ -255,8 +338,7 @@ function nextTrial() {
     if (!isPracticeBlock && timerEl) timerEl.textContent = "";
 
     timeoutHandle = setTimeout(() => {
-      const advance = isPracticeBlock ? "normal" : "faster";
-      recordResponse({ chosen_item_id: null, is_timeout: true, advance });
+      recordResponse({ chosen_item_id: null, is_timeout: true, advance: "faster" });
     }, EXPERIMENT.MAX_RESPONSE_WINDOW_MS);
   }, EXPERIMENT.FIXATION_MS);
 }

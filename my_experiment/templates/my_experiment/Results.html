@@ -71,17 +71,43 @@ Finished
   .rank-list {
     margin: 8px 0 0 18px;
   }
+
+  .assigned-snack-wrap {
+    display: flex;
+    justify-content: center;
+    margin: 6px 0 12px 0;
+  }
+
+  .assigned-snack-img {
+    width: 170px;
+    height: 170px;
+    object-fit: contain;
+    border-radius: 12px;
+    border: 1px solid #d9dee8;
+    background: #fff;
+    padding: 8px;
+    box-shadow: 0 6px 18px rgba(17, 24, 39, 0.08);
+  }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="results-wrap">
+  <section class="results-card" id="waitDoneHint" style="display:none;">
+    <p class="results-body" style="margin:0;">All participants are ready. Your allocation results are now available below.</p>
+  </section>
+
   <section class="results-card">
     <h3 style="margin-top:0; margin-bottom:6px;">Congratulations!</h3>
     <p class="results-body">You have completed the entire experiment. Thank you for your time.</p>
   </section>
 
   <section class="results-card">
+    {% if assigned_snack_img %}
+    <div class="assigned-snack-wrap">
+      <img class="assigned-snack-img" src="{{ assigned_snack_img }}" alt="{{ assigned_snack }}">
+    </div>
+    {% endif %}
     <p class="results-main" style="margin-bottom:8px;">You are assigned to: {{ assigned_snack }}</p>
     <div class="results-kicker" style="margin-top:10px;">How This Was Determined</div>
     <p class="results-note">
@@ -115,4 +141,46 @@ Finished
   </section>
 </div>
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  function playSoftTone(freq, durationMs, volume) {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.value = volume;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      setTimeout(() => {
+        osc.stop();
+        if (ctx && typeof ctx.close === 'function') {
+          ctx.close();
+        }
+      }, durationMs);
+    } catch (e) {}
+  }
+
+  // Only show the hint if explicitly marked by backend
+  const hint = document.getElementById('waitDoneHint');
+  if (!hint) return;
+  
+  // fromWaitPage is set by backend only when coming from ResultsWaitPage
+  if (typeof fromWaitPage !== 'undefined' && fromWaitPage === true) {
+    hint.style.display = '';
+  }
+
+  setTimeout(() => {
+    playSoftTone(784, 80, 0.03);
+    setTimeout(() => playSoftTone(988, 90, 0.03), 110);
+  }, 120);
+})();
+</script>
 {% endblock %}

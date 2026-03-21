@@ -17,8 +17,8 @@ function shuffle(array) {
   return a;
 }
 
-export function buildTrials() {
-  const basePairs = allPairs(SNACKS);
+export function buildTrials(snacks = SNACKS) {
+  const basePairs = allPairs(snacks);
   const trials = [];
 
   for (let rep = 0; rep < EXPERIMENT.REPEAT_BINARY_CHOICES; rep++) {

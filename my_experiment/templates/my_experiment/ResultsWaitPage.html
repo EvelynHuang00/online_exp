@@ -1,0 +1,143 @@
+{% extends 'otree/WaitPage.html' %}
+{% load otree static %}
+
+{% block internal_styles %}
+{{ super() }}
+<style>
+  body {
+    background: linear-gradient(180deg, #f6f8fb 0%, #edf3fb 100%);
+  }
+
+  .otree-wait-page {
+    max-width: 860px;
+  }
+
+  .card {
+    border: 1px solid #dfe5f0;
+    border-radius: 16px;
+    box-shadow: 0 12px 34px rgba(17, 24, 39, 0.08);
+    overflow: hidden;
+  }
+
+  .otree-wait-page__title.card-header {
+    border: none;
+    background: #fff;
+    color: #1f6feb;
+    font-size: 24px;
+    font-weight: 700;
+    padding: 20px 24px 6px 24px;
+  }
+
+  .card-body {
+    padding: 14px 24px 22px 24px;
+  }
+
+  .otree-wait-page__body {
+    margin: 0 0 12px 0;
+    color: #2a3545;
+    font-size: 17px;
+    line-height: 1.65;
+  }
+
+  .wait-hint {
+    margin: 0 0 14px 0;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #f7faff;
+    border: 1px solid #e3ecfa;
+    color: #4d5b6d;
+    font-size: 14px;
+  }
+
+  .wait-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 8px;
+    min-height: 18px;
+  }
+
+  .wait-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #9abdf8;
+    opacity: 0.35;
+    animation: waitDotPulse 1.8s ease-in-out infinite;
+  }
+
+  .wait-dot:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  .wait-dot:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+
+  @keyframes waitDotPulse {
+    0%,
+    100% {
+      opacity: 0.3;
+      transform: scale(1);
+    }
+    40% {
+      opacity: 0.9;
+      transform: scale(1.18);
+    }
+  }
+</style>
+{% endblock %}
+
+{% block title %}
+Please wait for other participants
+{% endblock %}
+
+{% block content %}
+<p class="otree-wait-page__body">
+  Some participants are still completing the task. We will continue automatically once everyone has finished.
+</p>
+<p class="wait-hint">
+  Please keep this page open. A subtle sound will play when your results are ready.
+</p>
+<div class="wait-indicator" aria-hidden="true">
+  <span class="wait-dot"></span>
+  <span class="wait-dot"></span>
+  <span class="wait-dot"></span>
+</div>
+{% endblock %}
+
+{% block internal_scripts %}
+{{ super() }}
+<script>
+(function () {
+  function playSoftTone(freq, durationMs, volume) {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.value = volume;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      setTimeout(() => {
+        osc.stop();
+        if (ctx && typeof ctx.close === 'function') {
+          ctx.close();
+        }
+      }, durationMs);
+    } catch (e) {}
+  }
+
+  playSoftTone(587, 90, 0.025);
+
+  // Do not set sessionStorage on beforeunload
+  // This was too sensitive and caused false positives
+  // Use backend flag instead
+})();
+</script>
+{% endblock %}

@@ -1,27 +1,112 @@
 {% load otree static %}
 
 {% block title %}
-Consent
+Participant Information
+{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'my_experiment/css/instructions.css' %}?v=20260320d">
+<style>
+  .info-card {
+    max-width: 680px;
+    margin: 80px auto 0 auto;
+    padding: 36px 40px;
+  }
+
+  .info-header {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+
+  .info-header h2 {
+    margin-bottom: 10px;
+  }
+
+  .info-header p {
+    margin: 0;
+    color: #555;
+    line-height: 1.5;
+  }
+
+  .info-field {
+    margin-bottom: 18px;
+  }
+
+  .info-field label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .info-field input {
+    width: 100%;
+    padding: 12px 14px;
+    font-size: 16px;
+    border: 1px solid #d8d8d8;
+    border-radius: 10px;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    box-sizing: border-box;
+  }
+
+  .info-field input:focus {
+    border-color: #4a90e2;
+    box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.12);
+  }
+
+  .info-button-wrap {
+    text-align: center;
+    margin-top: 28px;
+  }
+
+  .info-button-wrap .btn {
+    min-width: 140px;
+    padding: 10px 22px;
+    font-size: 16px;
+    border-radius: 10px;
+  }
+
+  .info-note {
+    margin-top: 18px;
+    text-align: center;
+    font-size: 14px;
+    color: #777;
+  }
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="form-group">
-  <label for="subjectIdInput">Subject ID</label>
-  <input id="subjectIdInput" type="text" class="form-control" placeholder="e.g., S001" required>
-</div>
+<div class="instruction-shell">
+  <div class="instruction-card info-card">
+    <div class="info-header">
+      <h2>Before you begin</h2>
+      <p>Please enter your information below to start the study.</p>
+    </div>
 
-<div class="form-group" style="margin-top: 10px;">
-  <label for="sessionIdInput">Session ID</label>
-  <input id="sessionIdInput" type="text" class="form-control" placeholder="e.g., session_001" required>
-</div>
+    <div class="info-field">
+      <label for="subjectIdInput">Participant ID</label>
+      <input id="subjectIdInput" type="text" placeholder="e.g., S001" required>
+    </div>
 
-<button type="button" class="btn btn-primary" id="startBtn" style="margin-top: 16px;">
-  Start
-</button>
+    <div class="info-field">
+      <label for="sessionIdInput">Session ID</label>
+      <input id="sessionIdInput" type="text" placeholder="e.g., session_001" required>
+    </div>
 
-<!-- Hide Next button but keep it rendered on the page -->
-<div style="display:none;">
-  {{ next_button }}
+    <div class="info-button-wrap">
+      <button type="button" class="btn btn-primary" id="startBtn">
+        Start
+      </button>
+    </div>
+
+    <div class="info-note">
+      Make sure both fields are filled in before continuing.
+    </div>
+
+    <div style="display:none;">
+      {{ next_button }}
+    </div>
+  </div>
 </div>
 {% endblock %}
 
@@ -40,14 +125,13 @@ Consent
     const session_id = (sessionEl.value || "").trim();
 
     if (!subject_id || !session_id) {
-      alert("Please enter both Subject ID and Session ID.");
+      alert("Please enter both Participant ID and Session ID.");
       return;
     }
 
     localStorage.setItem("subject_id", subject_id);
     localStorage.setItem("session_id", session_id);
 
-    // safest: submit the page form
     const form = document.querySelector("form");
     if (form) form.submit();
   });

@@ -1,5 +1,5 @@
 // my_experiment/static/my_experiment/js/wtp.js
-import { SNACKS, BDM } from "./config.js";
+import { SNACKS, PRACTICE_SNACKS, BDM } from "./config.js";
 import { downloadCSV } from "./export.js";
 
 const subject_id = localStorage.getItem("subject_id") || "S001";
@@ -13,9 +13,152 @@ const simulateBtn = document.getElementById("simulateBtn");
 const resultEl = document.getElementById("bdmResult");
 const nextBtn = document.getElementById("nextBtn");
 const hiddenJson = document.getElementById("wtpDataJson");
+const alertOverlay = document.getElementById("wtpAlert");
+const alertCloseBtn = document.getElementById("wtpAlertClose");
+const alertMessageEl = document.getElementById("wtpAlertMessage");
 
-const phase = localStorage.getItem("phase") || "practice";
+function resolvePhase() {
+  let src = null;
+  const root = document.getElementById("wtpApp");
+  if (root && root.dataset && root.dataset.phase) {
+    src = root.dataset.phase;
+  } else if (typeof window !== "undefined" && window.__TASK_PHASE__) {
+    src = window.__TASK_PHASE__;
+  } else {
+    try {
+      src = localStorage.getItem("phase");
+    } catch (e) {}
+  }
+
+  let phaseValue = (src || "practice").toString().toLowerCase();
+  if (phaseValue !== "real") {
+    phaseValue = "practice";
+  }
+
+  try {
+    localStorage.setItem("phase", phaseValue);
+  } catch (e) {}
+
+  return phaseValue;
+}
+
+function resolvePracticeCycle() {
+  let value = 1;
+  const root = document.getElementById("wtpApp");
+  if (root && root.dataset && root.dataset.practiceCycle) {
+    value = Number(root.dataset.practiceCycle);
+  } else if (typeof window !== "undefined" && window.__PRACTICE_CYCLE__ != null) {
+    value = Number(window.__PRACTICE_CYCLE__);
+  }
+
+  if (!Number.isFinite(value) || value < 1) {
+    value = 1;
+  }
+
+  return Math.floor(value);
+}
+
+const phase = resolvePhase();
+const practiceCycle = resolvePracticeCycle();
 const isReal = phase === "real";
+
+const formatMoney = (value) => `$${Number(value).toFixed(2)}`;
+
+const sliderState = new Map();
+const MISSING_BID_MESSAGE = "You still need to place a bid for every snack before submitting.";
+const HIGHLIGHT_DURATION_MS = 1200;
+
+function registerSliderField(fieldName, block) {
+  sliderState.set(fieldName, { touched: false, block });
+}
+
+function markSliderTouched(fieldName) {
+  const entry = sliderState.get(fieldName);
+  if (entry) {
+    entry.touched = true;
+  }
+}
+
+function clearSliderEntriesByPrefix(prefix) {
+  for (const key of Array.from(sliderState.keys())) {
+    if (key.startsWith(`${prefix}_`)) {
+      sliderState.delete(key);
+    }
+  }
+}
+
+function findUntouchedSnacks(snacks, fieldPrefix) {
+  const missing = [];
+  for (const snack of snacks) {
+    const key = `${fieldPrefix}_${snack.id}`;
+    const meta = sliderState.get(key);
+    if (!meta || !meta.touched) {
+      missing.push({ key, block: meta?.block ?? null });
+    }
+  }
+  return missing;
+}
+
+function highlightMissingSnacks(entries) {
+  if (!entries.length) return;
+
+  let firstBlock = null;
+  for (const entry of entries) {
+    const block = entry.block;
+    if (!block) {
+      continue;
+    }
+
+    if (!firstBlock) {
+      firstBlock = block;
+    }
+
+    block.classList.remove("wtp-snack-missing");
+    void block.offsetWidth;
+    block.classList.add("wtp-snack-missing");
+    setTimeout(() => block.classList.remove("wtp-snack-missing"), HIGHLIGHT_DURATION_MS);
+  }
+
+  if (firstBlock) {
+    firstBlock.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+}
+
+function requireAllSnacksTouched(snacks, fieldPrefix) {
+  const missing = findUntouchedSnacks(snacks, fieldPrefix);
+  if (!missing.length) {
+    return true;
+  }
+
+  highlightMissingSnacks(missing);
+  showMissingBidAlert(MISSING_BID_MESSAGE);
+  return false;
+}
+
+function showMissingBidAlert(message) {
+  if (alertMessageEl) {
+    alertMessageEl.textContent = message;
+  }
+  if (alertOverlay) {
+    alertOverlay.classList.add("visible");
+  }
+}
+
+function hideMissingBidAlert() {
+  if (alertOverlay) {
+    alertOverlay.classList.remove("visible");
+  }
+}
+
+alertCloseBtn?.addEventListener("click", hideMissingBidAlert);
+alertOverlay?.addEventListener("click", (event) => {
+  if (event.target === alertOverlay) {
+    hideMissingBidAlert();
+  }
+});
+
+let practiceSubmitted = false;
+let realSubmitted = false;
 
 function show(el) {
   if (el) el.style.display = "";
@@ -29,9 +172,30 @@ function setNextEnabled(enabled) {
   if (nextBtn) nextBtn.disabled = !enabled;
 }
 
+function renderOutcomeBlock(targetEl, { heading, snackLabel, price, bid, purchase, payment, remaining, endowment }) {
+  if (!targetEl) return;
+
+  const priceText = formatMoney(price);
+  const bidText = formatMoney(bid);
+  const paymentText = formatMoney(payment);
+  const remainingText = formatMoney(remaining);
+  const endowmentText = formatMoney(endowment);
+
+  const verdict = purchase
+    ? `You successfully purchase ${snackLabel} for ${priceText} because your bid of ${bidText} was higher than the price (${priceText}).`
+    : `You do not purchase ${snackLabel} because your bid of ${bidText} was lower than the price (${priceText}).`;
+
+  targetEl.innerHTML = `
+    <div class="bdm-outcome">
+      <h4>${heading}</h4>
+      <p>${verdict}</p>
+    </div>
+  `;
+}
+
 // -------------------- BDM helpers --------------------
-function pickBindingSnack() {
-  return SNACKS[Math.floor(Math.random() * SNACKS.length)];
+function pickBindingSnack(snacks) {
+  return snacks[Math.floor(Math.random() * snacks.length)];
 }
 
 function drawPrice() {
@@ -63,6 +227,7 @@ function renderSnackSlider({ container, snack, fieldName }) {
   block.style.border = "1px solid #ddd";
   block.style.borderRadius = "10px";
   block.style.textAlign = "center";
+  block.classList.add("wtp-snack-card");
 
   const img = document.createElement("img");
   img.src = snack.img;
@@ -96,7 +261,9 @@ function renderSnackSlider({ container, snack, fieldName }) {
   block.appendChild(sliderRow);
   container.appendChild(block);
 
+  registerSliderField(fieldName, block);
   const slider = new mgslider(fieldName, SLIDER_MIN, SLIDER_MAX, SLIDER_STEP);
+  slider.hook = () => markSliderTouched(fieldName);
   slider.recall = false;
   slider.print(sliderDiv);
 
@@ -111,26 +278,27 @@ function renderSnackSlider({ container, snack, fieldName }) {
 }
 
 // -------------------- Main WTP table --------------------
-function buildMainWTPTable() {
-  const slidersHere = document.getElementById("sliders_here");
+function buildWTPTable(slidersContainerId, snacks, fieldPrefix = "bid") {
+  const slidersHere = document.getElementById(slidersContainerId);
   if (!slidersHere) return;
 
+  clearSliderEntriesByPrefix(fieldPrefix);
   slidersHere.innerHTML = "";
 
-  for (const s of SNACKS) {
+  for (const s of snacks) {
     renderSnackSlider({
       container: slidersHere,
       snack: s,
-      fieldName: `bid_${s.id}`,
+      fieldName: `${fieldPrefix}_${s.id}`,
     });
   }
 }
 
-function collectBids() {
+function collectBids(snacks, fieldPrefix = "bid") {
   const bids = [];
 
-  for (const s of SNACKS) {
-    const fieldName = `bid_${s.id}`;
+  for (const s of snacks) {
+    const fieldName = `${fieldPrefix}_${s.id}`;
     const input = document.querySelector(`input[name="${fieldName}"]`);
     if (!input) {
       return { ok: false, msg: `Missing slider input for: ${s.label}` };
@@ -152,107 +320,110 @@ function collectBids() {
 }
 
 // -------------------- Practice BDM only --------------------
-const PRACTICE_N = Number(BDM.PRACTICE_TRIALS ?? 3);
-let practiceCount = 0;
-const practiceRows = [];
-
-function finishPracticeOnly() {
+function buildPracticeWTPPage() {
   if (!practiceEl) return;
 
   hide(headerEl);
   hide(mainEl);
-
-  practiceEl.innerHTML = `
-    <div class="container">
-      <h4>BDM practice complete</h4>
-      <p>You have completed the BDM practice trial(s).</p>
-      <p>Click <strong>Next</strong> to continue to the Binary Choice instructions.</p>
-    </div>
-  `;
-
-  if (hiddenJson) hiddenJson.value = JSON.stringify(practiceRows);
-  show(nextBtn);
-  setNextEnabled(true);
-}
-
-function renderPracticeTrial() {
-  if (!practiceEl || PRACTICE_N <= 0) {
-    finishPracticeOnly();
-    return;
-  }
-
-  hide(headerEl);
-  hide(mainEl);
   hide(nextBtn);
-
-  const snack = SNACKS[Math.floor(Math.random() * SNACKS.length)];
+  setNextEnabled(false);
 
   practiceEl.innerHTML = `
-    <div class="container" style="text-align:center;">
-      <h4>BDM Practice (${practiceCount + 1} / ${PRACTICE_N})</h4>
-      <div id="practiceSliderContainer"></div>
-      <button type="button" class="btn btn-primary" id="practiceSubmit" style="margin-top:12px;">Submit</button>
-      <div id="practiceResult" style="margin-top:12px;"></div>
+  <div class="instruction-shell">
+    <div class="instruction-card" style="max-width: 900px; margin: 0 auto; padding: 32px 36px;">
+      
+      <div style="text-align: center; margin-bottom: 24px;">
+        <h2 style="margin-bottom: 12px;">Practice</h2>
+        <p style="margin: 0 0 8px 0; font-size: 17px; line-height: 1.6;">
+          For each snack, choose the highest price you would be willing to pay.
+        </p>
+        <p style="margin: 0; font-size: 17px; line-height: 1.6;">
+          You can drag the slider or click on the bar to set your price.
+        </p>
+      </div>
+
+      <div id="practice_sliders_here" style="margin-top: 8px;"></div>
+
+      <div id="practiceResult" style="margin-top: 20px;"></div>
+
+      <div style="margin-top: 24px; text-align: center;">
+        <button type="button" class="btn btn-primary" id="practiceSimulateBtn" style="min-width: 160px;">
+          Submit Bids
+        </button>
+      </div>
     </div>
-  `;
+  </div>
+`;
 
-  const practiceSliderContainer = document.getElementById("practiceSliderContainer");
+  buildWTPTable("practice_sliders_here", PRACTICE_SNACKS, "practice_bid");
 
-  const rendered = renderSnackSlider({
-    container: practiceSliderContainer,
-    snack,
-    fieldName: "practiceBid",
-  });
+  const practiceSimulateBtn = document.getElementById("practiceSimulateBtn");
+  const practiceResultEl = document.getElementById("practiceResult");
 
-  document.getElementById("practiceSubmit").addEventListener("click", () => {
-    const bid = rendered.getValue();
+  practiceSimulateBtn?.addEventListener("click", () => {
+    if (practiceSubmitted) return;
 
-    if (!Number.isFinite(bid) || bid < 0) {
-      alert("Invalid bid.");
+    if (!requireAllSnacksTouched(PRACTICE_SNACKS, "practice_bid")) {
+      return;
+    }
+
+    const out = collectBids(PRACTICE_SNACKS, "practice_bid");
+    if (!out.ok) {
+      alert(out.msg);
       return;
     }
 
     const endowment = Number(BDM.ENDOWMENT);
-    const price = drawPrice();
-    const purchase = bid >= price;
-    const payment = purchase ? price : 0;
+    const binding = pickBindingSnack(PRACTICE_SNACKS);
+    const price_draw = drawPrice();
+
+    const bidMap = new Map(out.bids.map((r) => [r.snack_id, r.bid]));
+    const bindingBid = Number(bidMap.get(binding.id) ?? 0);
+
+    const purchase = bindingBid >= price_draw;
+    const payment = purchase ? price_draw : 0;
     const remaining = Number((endowment - payment).toFixed(2));
     const timestamp = new Date().toISOString();
 
-    practiceRows.push({
-      subject_id,
-      session_id,
-      snack_id: snack.id,
-      snack_label: snack.label,
-      bid: Number(bid).toFixed(2),
-      price_draw: Number(price).toFixed(2),
-      purchase_decision: purchase ? 1 : 0,
-      payment: Number(payment).toFixed(2),
-      remaining_cash: Number(remaining).toFixed(2),
-      trial_index: practiceCount + 1,
-      timestamp,
-      is_practice: 1,
+    const rows = out.bids.map((r) => {
+      const isBinding = r.snack_id === binding.id;
+      return {
+        subject_id,
+        session_id,
+        snack_id: r.snack_id,
+        snack_label: r.snack_label,
+        bid: r.bid.toFixed(2),
+        endowment_initial: endowment.toFixed(2),
+        binding_snack_id: binding.id,
+        is_binding: isBinding ? 1 : 0,
+        price_draw: isBinding ? price_draw.toFixed(2) : "",
+        purchase_decision: isBinding ? (purchase ? 1 : 0) : "",
+        payment: isBinding ? payment.toFixed(2) : "",
+        remaining_cash: isBinding ? remaining.toFixed(2) : "",
+        timestamp,
+        is_practice: 1,
+        practice_cycle: practiceCycle,
+      };
     });
 
-    document.getElementById("practiceResult").innerHTML = `
-      <div class="alert alert-info">
-        <div>Random price: $${price.toFixed(2)}</div>
-        <div>Your bid: $${bid.toFixed(2)}</div>
-        <div>Decision: ${purchase ? "Purchased" : "Not purchased"}</div>
-        <div>Payment: $${payment.toFixed(2)}</div>
-        <div>Remaining cash: $${remaining.toFixed(2)}</div>
-      </div>
-    `;
+    renderOutcomeBlock(practiceResultEl, {
+      heading: "Practice Bidding outcome",
+      snackLabel: binding.label,
+      price: price_draw,
+      bid: bindingBid,
+      purchase,
+      payment,
+      remaining,
+      endowment,
+    });
 
-    practiceCount += 1;
+    if (hiddenJson) hiddenJson.value = JSON.stringify(rows);
+    show(nextBtn);
+    setNextEnabled(true);
 
-    setTimeout(() => {
-      if (practiceCount >= PRACTICE_N) {
-        finishPracticeOnly();
-      } else {
-        renderPracticeTrial();
-      }
-    }, 2000);
+    practiceSubmitted = true;
+    practiceSimulateBtn.disabled = true;
+    practiceSimulateBtn.textContent = "Bids Submitted";
   });
 }
 
@@ -262,24 +433,30 @@ function showRealMain() {
   show(headerEl);
   show(mainEl);
   hide(nextBtn);
-  buildMainWTPTable();
+  buildWTPTable("sliders_here", SNACKS, "bid");
   if (hiddenJson) hiddenJson.value = "";
   setNextEnabled(false);
 }
 
 simulateBtn?.addEventListener("click", () => {
-  const out = collectBids();
+  if (realSubmitted) return;
+
+  if (!requireAllSnacksTouched(SNACKS, "bid")) {
+    return;
+  }
+
+  const out = collectBids(SNACKS, "bid");
   if (!out.ok) {
     alert(out.msg);
     return;
   }
 
   const endowment = Number(BDM.ENDOWMENT);
-  const binding = pickBindingSnack();
+  const binding = pickBindingSnack(SNACKS);
   const price_draw = drawPrice();
 
   const bidMap = new Map(out.bids.map((r) => [r.snack_id, r.bid]));
-  const bindingBid = bidMap.get(binding.id);
+  const bindingBid = Number(bidMap.get(binding.id) ?? 0);
 
   const purchase = bindingBid >= price_draw;
   const payment = purchase ? price_draw : 0;
@@ -303,26 +480,28 @@ simulateBtn?.addEventListener("click", () => {
       payment: isBinding ? payment.toFixed(2) : "",
       remaining_cash: isBinding ? remaining.toFixed(2) : "",
       timestamp,
+      practice_cycle: 1,
     };
   });
 
-  if (resultEl) {
-    resultEl.innerHTML = `
-      <div class="alert alert-info">
-        <div><strong>BDM outcome</strong></div>
-        <div>Binding snack: ${binding.label}</div>
-        <div>Random price: $${price_draw.toFixed(2)}</div>
-        <div>Your bid: $${bindingBid.toFixed(2)}</div>
-        <div>Decision: ${purchase ? "Purchased" : "Not purchased"}</div>
-        <div>Payment: $${payment.toFixed(2)}</div>
-        <div>Remaining cash: $${remaining.toFixed(2)}</div>
-      </div>
-    `;
-  }
+  renderOutcomeBlock(resultEl, {
+    heading: "BDM outcome",
+    snackLabel: binding.label,
+    price: price_draw,
+    bid: bindingBid,
+    purchase,
+    payment,
+    remaining,
+    endowment,
+  });
 
   if (hiddenJson) hiddenJson.value = JSON.stringify(rows);
   show(nextBtn);
   setNextEnabled(true);
+
+  realSubmitted = true;
+  simulateBtn.disabled = true;
+  simulateBtn.textContent = "Bids Submitted";
 });
 
 // -------------------- Start --------------------
@@ -334,5 +513,5 @@ setNextEnabled(false);
 if (isReal) {
   showRealMain();
 } else {
-  renderPracticeTrial();
+  buildPracticeWTPPage();
 }

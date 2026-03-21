@@ -1,0 +1,144 @@
+:root {
+  --instruction-bg: #f6f8fb;
+  --instruction-card-bg: #ffffff;
+  --instruction-accent: #1f6feb;
+  --instruction-muted: #5c697a;
+  --instruction-border: #dfe5f0;
+}
+
+body.instruction-body {
+  background: var(--instruction-bg);
+}
+
+.instruction-shell {
+  min-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 40px 16px;
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #1d2330;
+}
+
+.instruction-card {
+  width: 100%;
+  max-width: 760px;
+  background: var(--instruction-card-bg);
+  border-radius: 18px;
+  padding: 36px 40px;
+  box-shadow: 0 22px 60px rgba(28, 39, 64, 0.08);
+}
+
+.instruction-slide {
+  display: none;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.instruction-slide.active {
+  display: flex;
+}
+
+.instruction-slide.leaving {
+  display: flex;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.instruction-slide.entering {
+  opacity: 0;
+  animation: instruction-fade-in 150ms ease forwards;
+}
+
+@keyframes instruction-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.instruction-slide h2,
+.instruction-slide h3 {
+  margin: 0;
+  font-size: 26px;
+  color: var(--instruction-accent);
+}
+
+.instruction-slide p,
+.instruction-slide li {
+  font-size: 18px;
+  line-height: 1.6;
+  color: #1f2733;
+}
+
+.instruction-slide ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.instruction-nav {
+  width: 100%;
+  max-width: 760px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 18px;
+}
+
+.instruction-nav button {
+  border: none;
+  border-radius: 999px;
+  width: 52px;
+  height: 52px;
+  font-size: 22px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--instruction-accent);
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.instruction-nav button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.instruction-indicator {
+  font-size: 17px;
+  color: var(--instruction-muted);
+}
+
+.instruction-hint {
+  margin-top: 12px;
+  font-size: 16px;
+  color: var(--instruction-muted);
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .instruction-card {
+    padding: 28px 24px;
+  }
+
+  .instruction-slide h2,
+  .instruction-slide h3 {
+    font-size: 22px;
+  }
+
+  .instruction-slide p,
+  .instruction-slide li {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .instruction-slide.leaving,
+  .instruction-slide.entering {
+    transition: none;
+    animation: none;
+    opacity: 1;
+  }
+}

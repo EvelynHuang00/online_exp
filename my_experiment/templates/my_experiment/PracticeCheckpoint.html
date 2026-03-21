@@ -1,25 +1,39 @@
 {% extends "global/Page.html" %}
+{% block styles %}
+<link rel="stylesheet" href="{% static 'my_experiment/css/instructions.css' %}?v=20260320d">
+{% endblock %}
+
 {% block content %}
 
-<div class="container" style="max-width: 760px; margin: 40px auto; text-align: center;">
-  <h3>Practice Complete</h3>
+<div class="instruction-shell">
+  <div class="instruction-card instruction-carousel" data-next-button-id="beginBtn">
+    <div class="instruction-slide active">
+      <h2>Practice complete</h2>
+      <p>Nice work! You finished the practice rounds for both tasks.</p>
+      <p>The real rounds will work the same way.</p>
+    </div>
 
-  <p>
-    Please ensure you understand the experiment prior to beginning the real experiment.
-    If you have any questions, please ask the experimenter.
-  </p>
-
-  <p>
-    If you'd like to repeat the practice, please click <strong>Repeat Practice</strong>.
-  </p>
+    <div class="instruction-slide">
+      <h2>Your options</h2>
+      <ul>
+        <p><strong>Repeat Practice</strong>: Go through the practice again if you want another chance to get familiar with it.</p>
+        <p><strong>Begin Real Experiment</strong>: Move on to the real rounds. From that point on, your choices will count.</p>
+      </ul>
+    </div>
+    <div class="instruction-nav">
+      <button type="button" class="instruction-prev" aria-label="Previous slide">←</button>
+      <div class="instruction-indicator">Slide 1 of 2</div>
+      <button type="button" class="instruction-next" aria-label="Next slide">→</button>
+    </div>
+  </div>
 
   <input type="hidden" name="practice_decision" id="practiceDecision" value="">
 
-  <div style="margin-top: 24px; display: flex; gap: 16px; justify-content: center;">
+  <div style="margin-top: 24px; display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;">
     {% if show_repeat_button %}
     <button type="button" class="btn btn-secondary" id="repeatBtn">Repeat Practice</button>
     {% endif %}
-    <button type="button" class="btn btn-primary" id="beginBtn">Begin Real Experiment</button>
+    <button type="button" class="btn btn-primary" id="beginBtn" disabled>Begin Real Experiment</button>
   </div>
 </div>
 
@@ -36,10 +50,15 @@
   }
 
   beginBtn.addEventListener("click", () => {
+    if (beginBtn.disabled) return;
     decisionInput.value = "begin";
     localStorage.setItem("phase", "real");
     document.querySelector("form").submit();
   });
 </script>
 
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{% static 'my_experiment/js/instructions.js' %}?v=20260320d"></script>
 {% endblock %}

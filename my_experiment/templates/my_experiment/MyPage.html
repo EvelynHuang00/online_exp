@@ -3,11 +3,11 @@
 {% block title %}{% endblock %}
 
 {% block styles %}
-<link rel="stylesheet" href="{% static 'my_experiment/css/styles.css' %}">
+<link rel="stylesheet" href="{% static 'my_experiment/css/styles.css' %}?v=20260320c">
 {% endblock %}
 
 {% block content %}
-<div class="container">
+<div class="container" id="taskApp" data-phase="{{ task_phase }}" data-practice-cycle="{{ practice_cycle }}">
   <div id="status"></div>
 
   <div id="mainHint" class="hidden" style="margin: 8px 0; color: #555;">
@@ -38,10 +38,7 @@
     <div style="font-size:56px; font-weight:700;">Faster!</div>
   </section>
 
-  <section id="end" class="hidden">
-    <h3>Task complete</h3>
-    <input type="hidden" name="choice_data_json" id="choiceDataJson" value="">
-  </section>
+  <input type="hidden" name="choice_data_json" id="choiceDataJson" value="">
 
   <div style="margin-top:12px;">
     <button class="otree-btn-next btn btn-primary" id="nextBtn" type="submit" disabled>
@@ -52,5 +49,12 @@
 {% endblock %}
 
 {% block scripts %}
-<script type="module" src="{% static 'my_experiment/js/task.js' %}"></script>
+<script>
+  window.__TASK_PHASE__ = "{{ task_phase }}";
+  window.__PRACTICE_CYCLE__ = {{ practice_cycle }};
+  try {
+    localStorage.setItem("phase", window.__TASK_PHASE__);
+  } catch (e) {}
+</script>
+<script type="module" src="{% static 'my_experiment/js/task.js' %}?v=20260320c"></script>
 {% endblock %}
