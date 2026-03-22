@@ -1198,6 +1198,10 @@ class ChoicePracticeCheckpointRepeat(ChoicePracticeCheckpoint):
         return dict(show_repeat_button=_can_request_repeat_choice(player))
 
 
+class SnackGallery(Page):
+    template_name = "my_experiment/SnackGallery.html"
+
+
 class BannerBeginChoiceReal(Page):
     template_name = "my_experiment/BannerBeginReal.html"
 
@@ -1253,6 +1257,7 @@ page_sequence = [
     ChoicePracticeCheckpoint,
     *_choice_repeat_cycle_pages * int(C.MAX_PRACTICE_REPEAT_CYCLES),
 
+    SnackGallery,
     BannerBeginChoiceReal,
     MyPageReal,
 

@@ -1,0 +1,102 @@
+{% load otree static %}
+{% extends "global/Page.html" %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'my_experiment/css/instructions.css' %}?v=20260320d">
+<style>
+  .snack-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+    justify-items: center;
+    margin: 16px auto 0 auto;
+    max-width: 960px;
+  }
+  .snack-card {
+    width: 100%;
+    max-width: 220px;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 14px;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+    background: #fff;
+  }
+  .snack-img-box {
+    height: 190px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+  }
+  .snack-card img {
+    max-width: 170px;
+    max-height: 170px;
+    object-fit: contain;
+    display: block;
+  }
+  .snack-card img.oreo {
+    transform: scale(1.12);
+  }
+  .snack-card .label {
+    font-weight: 600;
+    font-size: 15px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="instruction-shell">
+  <div class="instruction-card" style="max-width: 960px; margin: 0 auto; padding: 28px 32px;">
+    <h2 style="margin-top: 0; color: #1f6feb;">Snacks you will see</h2>
+    <p style="margin: 8px 0 16px 0;">These are all the snacks you will choose between in the real choice task. Take a moment to look them over.</p>
+
+    <div class="snack-grid">
+      <div class="snack-card">
+        <div class="snack-img-box">
+          <img src="{% static 'my_experiment/assets/snacks/snack1.png' %}" alt="A Teaspoon of Ketchup">
+        </div>
+        <div class="label">A Teaspoon of Ketchup</div>
+      </div>
+      <div class="snack-card">
+        <div class="snack-img-box">
+          <img class="oreo" src="{% static 'my_experiment/assets/snacks/snack2.jpg' %}" alt="One Oreo">
+        </div>
+        <div class="label">One Oreo</div>
+      </div>
+      <div class="snack-card">
+        <div class="snack-img-box">
+          <img src="{% static 'my_experiment/assets/snacks/snack3.jpg' %}" alt="One Potato Chip">
+        </div>
+        <div class="label">One Potato Chip</div>
+      </div>
+      <div class="snack-card">
+        <div class="snack-img-box">
+          <img src="{% static 'my_experiment/assets/snacks/snack4.jpg' %}" alt="One Saltine Cracker">
+        </div>
+        <div class="label">One Saltine Cracker</div>
+      </div>
+      <div class="snack-card">
+        <div class="snack-img-box">
+          <img src="{% static 'my_experiment/assets/snacks/snack5.jpg' %}" alt="One Grape">
+        </div>
+        <div class="label">One Grape</div>
+      </div>
+      <div class="snack-card">
+        <div class="snack-img-box">
+          <img src="{% static 'my_experiment/assets/snacks/snack6.jpg' %}" alt="One Baby Carrot">
+        </div>
+        <div class="label">One Baby Carrot</div>
+      </div>
+    </div>
+
+    <div style="margin-top: 20px; text-align: center;">
+      <button class="otree-btn-next btn btn-primary" type="submit">Continue</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{% static 'my_experiment/js/instructions.js' %}?v=20260320d"></script>
+{% endblock %}
