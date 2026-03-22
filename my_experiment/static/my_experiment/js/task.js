@@ -1,5 +1,5 @@
 // my_experiment/static/my_experiment/js/task.js
-import { EXPERIMENT, SNACKS, PRACTICE_SNACKS } from "./config.js";
+import { EXPERIMENT, SNACKS } from "./config.js";
 import { buildTrials } from "./trialgen.js";
 import { downloadCSV } from "./export.js";
 
@@ -9,6 +9,40 @@ const subject_id = localStorage.getItem("subject_id") || "S001";
 const session_id = localStorage.getItem("session_id") || "session_001";
 
 const FASTER_MS = 2000;
+
+function shuffleArray(array) {
+  const a = array.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function buildPracticeCoveringTrials(snacks, targetPairs = 3) {
+  const shuffled = shuffleArray(snacks);
+  const pairs = [];
+
+  for (let i = 0; i + 1 < shuffled.length && pairs.length < targetPairs; i += 2) {
+    const a = shuffled[i];
+    const b = shuffled[i + 1];
+    const flip = Math.random() < 0.5;
+    const left = flip ? a : b;
+    const right = flip ? b : a;
+    pairs.push({
+      pair_id: `${a.id}__${b.id}`,
+      left_item_id: left.id,
+      right_item_id: right.id,
+    });
+  }
+
+  // Fallback: if something odd happens (e.g., not enough snacks), reuse main generator.
+  if (pairs.length === 0) {
+    return buildTrials(snacks).slice(0, targetPairs);
+  }
+
+  return pairs.slice(0, targetPairs);
+}
 
 function resolvePhase() {
   let src = null;
@@ -54,9 +88,7 @@ function resolvePracticeCycle() {
 const phase = resolvePhase();
 const practiceCycle = resolvePracticeCycle();
 const isReal = phase === "real";
-const activeSnacks = isReal ? SNACKS : PRACTICE_SNACKS;
-
-const snackById = new Map(activeSnacks.map((s) => [s.id, s]));
+const snackById = new Map(SNACKS.map((s) => [s.id, s]));
 
 const statusEl = $("status");
 const fixationEl = $("fixation");
@@ -73,13 +105,14 @@ const rightImg = $("rightImg");
 const leftLabel = $("leftLabel");
 const rightLabel = $("rightLabel");
 
-const allTrials = buildTrials(activeSnacks);
-const PRACTICE_N = isReal
-  ? 0
-  : Math.min(Number(EXPERIMENT.PRACTICE_BINARY_TRIALS ?? 5), allTrials.length);
-
-const practiceTrials = allTrials.slice(0, PRACTICE_N);
-const mainTrials = allTrials.slice(PRACTICE_N);
+const allTrials = buildTrials(SNACKS);
+const practiceTrials = isReal
+  ? []
+  : buildPracticeCoveringTrials(
+      SNACKS,
+      Math.min(Number(EXPERIMENT.PRACTICE_BINARY_TRIALS ?? 3), Math.floor(SNACKS.length / 2))
+    );
+const mainTrials = allTrials;
 
 // practice phase: only practice
 // real phase: only main
@@ -90,7 +123,7 @@ let trials = isReal ? mainTrials : practiceTrials;
 const practiceTrialCount = practiceTrials.length;
 const mainTrialCount = mainTrials.length;
 
-console.log(`[Task Init] Phase: ${phase}, cycle: ${practiceCycle}, isReal: ${isReal}, isPracticeBlock: ${isPracticeBlock}, activeSnacks: ${activeSnacks.length}, allTrials: ${allTrials.length}, practiceTrials: ${practiceTrialCount}, mainTrials: ${mainTrialCount}, trials: ${trials.length}`);
+console.log(`[Task Init] Phase: ${phase}, cycle: ${practiceCycle}, isReal: ${isReal}, isPracticeBlock: ${isPracticeBlock}, snacks: ${SNACKS.length}, allTrials: ${allTrials.length}, practiceTrials: ${practiceTrialCount}, mainTrials: ${mainTrialCount}, trials: ${trials.length}`);
 
 const rows = [];
 
