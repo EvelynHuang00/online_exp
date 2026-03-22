@@ -1,0 +1,64 @@
+{% load otree static %}
+{% extends "global/Page.html" %}
+{% block styles %}
+<link rel="stylesheet" href="{% static 'my_experiment/css/instructions.css' %}?v=20260320d">
+{% endblock %}
+
+{% block content %}
+<div class="instruction-shell">
+  <div class="instruction-card instruction-carousel" data-next-button-id="beginBtn">
+    <div class="instruction-slide active">
+      <h2>Choice practice complete</h2>
+      <p>Great job! You finished the choice practice rounds.</p>
+      <p>The real choice task will work the same way.</p>
+    </div>
+
+    <div class="instruction-slide">
+      <h2>Your options</h2>
+      <ul>
+        <p><strong>Repeat Practice</strong>: Do the choice practice again if you want more practice.</p>
+        <p><strong>Begin Real Choices</strong>: Move on to the real choice rounds. From that point on, your choices will count.</p>
+      </ul>
+    </div>
+    <div class="instruction-nav">
+      <button type="button" class="instruction-prev" aria-label="Previous slide">←</button>
+      <div class="instruction-indicator">Slide 1 of 2</div>
+      <button type="button" class="instruction-next" aria-label="Next slide">→</button>
+    </div>
+  </div>
+
+  <input type="hidden" name="choice_practice_decision" id="choicePracticeDecision" value="">
+
+  <div style="margin-top: 24px; display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;">
+    {% if show_repeat_button %}
+    <button type="button" class="btn btn-secondary" id="repeatBtn">Repeat Practice</button>
+    {% endif %}
+    <button type="button" class="btn btn-primary" id="beginBtn" disabled>Begin Real Choices</button>
+  </div>
+</div>
+
+<script>
+  const decisionInput = document.getElementById("choicePracticeDecision");
+  const repeatBtn = document.getElementById("repeatBtn");
+  const beginBtn = document.getElementById("beginBtn");
+
+  if (repeatBtn) {
+    repeatBtn.addEventListener("click", () => {
+      decisionInput.value = "repeat";
+      document.querySelector("form")?.submit();
+    });
+  }
+
+  beginBtn.addEventListener("click", () => {
+    if (beginBtn.disabled) return;
+    decisionInput.value = "begin";
+    try { localStorage.setItem("phase", "real"); } catch (e) {}
+    document.querySelector("form")?.submit();
+  });
+</script>
+
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{% static 'my_experiment/js/instructions.js' %}?v=20260320d"></script>
+{% endblock %}

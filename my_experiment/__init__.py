@@ -94,21 +94,35 @@ class Player(BasePlayer):
     # Source of truth for whether the participant is in practice or real flow.
     current_phase = models.StringField(initial="practice")
 
+    # Task-specific phase state so bidding and choice can advance independently.
+    bidding_phase = models.StringField(initial="practice")
+    choice_phase = models.StringField(initial="practice")
+
     # Last checkpoint decision submitted by the participant.
     # Stage 2 will connect this to form handling on PracticeCheckpoint.
     practice_decision = models.StringField(blank=True)
+    bidding_practice_decision = models.StringField(blank=True)
+    choice_practice_decision = models.StringField(blank=True)
 
     # How many times the participant requested practice repetition.
     practice_repeat_count = models.IntegerField(initial=0)
+    bidding_practice_repeat_count = models.IntegerField(initial=0)
+    choice_practice_repeat_count = models.IntegerField(initial=0)
 
     # Whether the participant has completed at least one practice block.
     practice_completed = models.BooleanField(initial=False)
+    bidding_practice_completed = models.BooleanField(initial=False)
+    choice_practice_completed = models.BooleanField(initial=False)
 
     # Whether the participant has entered the real block.
     real_started = models.BooleanField(initial=False)
+    bidding_real_started = models.BooleanField(initial=False)
+    choice_real_started = models.BooleanField(initial=False)
 
     # Current practice cycle counter (starts at 1, increments on each repeat).
     practice_cycle_index = models.IntegerField(initial=1)
+    bidding_practice_cycle_index = models.IntegerField(initial=1)
+    choice_practice_cycle_index = models.IntegerField(initial=1)
 
     # -------------------------------------------------------------------------
     # Raw frontend payloads
@@ -156,25 +170,73 @@ class Player(BasePlayer):
         if current_phase not in ("practice", "real"):
             self.current_phase = "practice"
 
+        bidding_phase = self.field_maybe_none("bidding_phase")
+        if bidding_phase not in ("practice", "real"):
+            self.bidding_phase = "practice"
+
+        choice_phase = self.field_maybe_none("choice_phase")
+        if choice_phase not in ("practice", "real"):
+            self.choice_phase = "practice"
+
         practice_decision = self.field_maybe_none("practice_decision")
         if practice_decision not in ("", "repeat", "begin"):
             self.practice_decision = ""
+
+        bidding_decision = self.field_maybe_none("bidding_practice_decision")
+        if bidding_decision not in ("", "repeat", "begin"):
+            self.bidding_practice_decision = ""
+
+        choice_decision = self.field_maybe_none("choice_practice_decision")
+        if choice_decision not in ("", "repeat", "begin"):
+            self.choice_practice_decision = ""
 
         practice_repeat_count = self.field_maybe_none("practice_repeat_count")
         if practice_repeat_count is None:
             self.practice_repeat_count = 0
 
+        bidding_repeat_count = self.field_maybe_none("bidding_practice_repeat_count")
+        if bidding_repeat_count is None:
+            self.bidding_practice_repeat_count = 0
+
+        choice_repeat_count = self.field_maybe_none("choice_practice_repeat_count")
+        if choice_repeat_count is None:
+            self.choice_practice_repeat_count = 0
+
         practice_completed = self.field_maybe_none("practice_completed")
         if practice_completed is None:
             self.practice_completed = False
+
+        bidding_completed = self.field_maybe_none("bidding_practice_completed")
+        if bidding_completed is None:
+            self.bidding_practice_completed = False
+
+        choice_completed = self.field_maybe_none("choice_practice_completed")
+        if choice_completed is None:
+            self.choice_practice_completed = False
 
         real_started = self.field_maybe_none("real_started")
         if real_started is None:
             self.real_started = False
 
+        bidding_real_started = self.field_maybe_none("bidding_real_started")
+        if bidding_real_started is None:
+            self.bidding_real_started = False
+
+        choice_real_started = self.field_maybe_none("choice_real_started")
+        if choice_real_started is None:
+            self.choice_real_started = False
+
         practice_cycle_index = self.field_maybe_none("practice_cycle_index")
         if practice_cycle_index in (None, ) or int(practice_cycle_index) < 1:
             self.practice_cycle_index = 1
+
+        bidding_cycle_index = self.field_maybe_none("bidding_practice_cycle_index")
+        if bidding_cycle_index in (None,) or int(bidding_cycle_index) < 1:
+            self.bidding_practice_cycle_index = 1
+
+        choice_cycle_index = self.field_maybe_none("choice_practice_cycle_index")
+        if choice_cycle_index in (None,) or int(choice_cycle_index) < 1:
+            self.choice_practice_cycle_index = 1
 
 # =============================================================================
 # EXTRA TABLES
@@ -306,19 +368,33 @@ def _read_binary_rows_from_player_practice(player: Player):
     return _parse_json_list(player.choice_data_json_practice)
 
 
-def _current_backend_phase(player: Player) -> str:
-    """Return backend phase label for task writes and live saves."""
+def _current_bidding_phase(player: Player) -> str:
+    """Return phase for bidding task only."""
     player.ensure_backend_state_initialized()
-    return "real" if bool(player.field_maybe_none("real_started")) else "practice"
+    return "real" if bool(player.field_maybe_none("bidding_real_started")) else "practice"
 
 
-def _current_practice_cycle(player: Player) -> int:
-    """Return the participant's current practice cycle counter (>=1)."""
+def _current_choice_phase(player: Player) -> str:
+    """Return phase for choice task only."""
     player.ensure_backend_state_initialized()
-    cycle = int(player.field_maybe_none("practice_cycle_index") or 1)
+    return "real" if bool(player.field_maybe_none("choice_real_started")) else "practice"
+
+
+def _current_bidding_practice_cycle(player: Player) -> int:
+    player.ensure_backend_state_initialized()
+    cycle = int(player.field_maybe_none("bidding_practice_cycle_index") or 1)
     if cycle < 1:
         cycle = 1
-        player.practice_cycle_index = 1
+        player.bidding_practice_cycle_index = 1
+    return cycle
+
+
+def _current_choice_practice_cycle(player: Player) -> int:
+    player.ensure_backend_state_initialized()
+    cycle = int(player.field_maybe_none("choice_practice_cycle_index") or 1)
+    if cycle < 1:
+        cycle = 1
+        player.choice_practice_cycle_index = 1
     return cycle
 
 
@@ -574,14 +650,16 @@ class WTP(Page):
 
     @staticmethod
     def before_next_page(player: Player, timeout_happened):
-        # Stage 5: enforce strict separation of practice vs real WTP payloads.
-        phase = _current_backend_phase(player)
+        # Stage 5: enforce strict separation of practice vs real WTP payloads (bidding task).
+        phase = _current_bidding_phase(player)
         raw = player.field_maybe_none("wtp_data_json") or ""
 
         if phase == "real":
+            player.bidding_phase = "real"
             player.current_phase = "real"
             return
 
+        player.bidding_phase = "practice"
         player.current_phase = "practice"
         previous_rows = _parse_json_list(player.field_maybe_none("wtp_data_json_practice"))
         new_rows = _parse_json_list(raw)
@@ -592,8 +670,8 @@ class WTP(Page):
     @staticmethod
     def vars_for_template(player: Player):
         return dict(
-            task_phase=_current_backend_phase(player),
-            practice_cycle=_current_practice_cycle(player),
+            task_phase=_current_bidding_phase(player),
+            practice_cycle=_current_bidding_practice_cycle(player),
         )
 
 
@@ -601,52 +679,75 @@ class InstructionsBinary(Page):
     pass
 
 
-def _repeat_block_requested(player: Player) -> bool:
-    """Whether participant selected repeat at the first checkpoint."""
-    return int(player.field_maybe_none("practice_repeat_count") or 0) > 0
+def _repeat_block_requested_bidding(player: Player) -> bool:
+    return int(player.field_maybe_none("bidding_practice_repeat_count") or 0) > 0
 
 
-def _show_repeat_block(player: Player) -> bool:
-    """Show optional repeat-practice pages only before real starts."""
-    return _repeat_block_requested(player) and not bool(player.field_maybe_none("real_started"))
+def _repeat_block_requested_choice(player: Player) -> bool:
+    return int(player.field_maybe_none("choice_practice_repeat_count") or 0) > 0
 
 
-def _can_request_repeat(player: Player) -> bool:
-    """Whether participant can still request another repeat cycle."""
-    repeat_count = int(player.field_maybe_none("practice_repeat_count") or 0)
+def _show_repeat_block_bidding(player: Player) -> bool:
+    return _repeat_block_requested_bidding(player) and not bool(player.field_maybe_none("bidding_real_started"))
+
+
+def _show_repeat_block_choice(player: Player) -> bool:
+    return _repeat_block_requested_choice(player) and not bool(player.field_maybe_none("choice_real_started"))
+
+
+def _can_request_repeat_bidding(player: Player) -> bool:
+    repeat_count = int(player.field_maybe_none("bidding_practice_repeat_count") or 0)
     return repeat_count < int(C.MAX_PRACTICE_REPEAT_CYCLES)
 
 
-def _apply_practice_checkpoint_decision(player: Player, *, allow_repeat: bool):
-    """Apply checkpoint decision to backend state with policy enforcement."""
+def _can_request_repeat_choice(player: Player) -> bool:
+    repeat_count = int(player.field_maybe_none("choice_practice_repeat_count") or 0)
+    return repeat_count < int(C.MAX_PRACTICE_REPEAT_CYCLES)
+
+
+def _apply_checkpoint_decision(
+    player: Player,
+    *,
+    decision_field: str,
+    repeat_count_field: str,
+    practice_cycle_field: str,
+    phase_field: str,
+    real_started_field: str,
+    completed_field: str,
+    allow_repeat: bool,
+):
+    """Generic checkpoint updater used for bidding and choice."""
     player.ensure_backend_state_initialized()
 
-    decision = (player.field_maybe_none("practice_decision") or "").strip().lower()
+    decision_raw = player.field_maybe_none(decision_field)
+    decision = (decision_raw or "").strip().lower()
     if decision not in ("repeat", "begin"):
         decision = "begin"
 
-    repeat_count = int(player.field_maybe_none("practice_repeat_count") or 0)
+    repeat_count = int(player.field_maybe_none(repeat_count_field) or 0)
+    current_cycle = int(player.field_maybe_none(practice_cycle_field) or 1)
+    if current_cycle < 1:
+        current_cycle = 1
 
-    # Once real starts, keep participant in real flow.
-    if bool(player.field_maybe_none("real_started")):
+    if bool(player.field_maybe_none(real_started_field)):
         decision = "begin"
 
     if decision == "repeat" and not allow_repeat:
         decision = "begin"
 
-    player.practice_decision = decision
-    player.practice_completed = True
-    current_cycle = _current_practice_cycle(player)
+    setattr(player, decision_field, decision)
+    setattr(player, practice_cycle_field, current_cycle)
+    setattr(player, completed_field, True)
 
     if decision == "repeat":
-        player.practice_repeat_count = repeat_count + 1
-        player.practice_cycle_index = current_cycle + 1
-        player.current_phase = "practice"
-        player.real_started = False
+        setattr(player, repeat_count_field, repeat_count + 1)
+        setattr(player, practice_cycle_field, current_cycle + 1)
+        setattr(player, phase_field, "practice")
+        setattr(player, real_started_field, False)
     else:
-        player.practice_cycle_index = 1
-        player.current_phase = "real"
-        player.real_started = True
+        setattr(player, practice_cycle_field, 1)
+        setattr(player, phase_field, "real")
+        setattr(player, real_started_field, True)
 
 
 class MyPage(Page):
@@ -663,20 +764,22 @@ class MyPage(Page):
     @staticmethod
     def vars_for_template(player: Player):
         return dict(
-            task_phase=_current_backend_phase(player),
-            practice_cycle=_current_practice_cycle(player),
+            task_phase=_current_choice_phase(player),
+            practice_cycle=_current_choice_practice_cycle(player),
         )
 
     @staticmethod
     def before_next_page(player: Player, timeout_happened):
         # Stage 4: keep practice choice payloads out of formal field.
-        phase = _current_backend_phase(player)
+        phase = _current_choice_phase(player)
         raw = player.field_maybe_none("choice_data_json") or ""
 
         if phase == "real":
+            player.choice_phase = "real"
             player.current_phase = "real"
             return
 
+        player.choice_phase = "practice"
         player.current_phase = "practice"
         player.choice_data_json_practice = raw
         player.choice_data_json = ""
@@ -710,7 +813,7 @@ class MyPage(Page):
 
         session_id = _get_session_id(player)
         subject_id = _get_subject_id(player)
-        phase = _current_backend_phase(player)
+        phase = _current_choice_phase(player)
 
         data_phase = str(data.get("phase", "") or "").strip().lower()
         if data_phase in ("practice", "real"):
@@ -722,7 +825,7 @@ class MyPage(Page):
 
         practice_cycle = int(data.get("practice_cycle", 0) or 0)
         if practice_cycle <= 0:
-            practice_cycle = _current_practice_cycle(player) if phase == "practice" else 1
+            practice_cycle = _current_choice_practice_cycle(player) if phase == "practice" else 1
 
         pair_id = str(data.get("pair_id", "") or "")
         left_item_id = str(data.get("left_item_id", "") or "")
@@ -752,7 +855,7 @@ class MyPage(Page):
             session_id=session_id,
             subject_id=subject_id,
             phase=phase,
-             practice_cycle=practice_cycle,
+            practice_cycle=practice_cycle,
             trial_index=trial_index,
             pair_id=pair_id,
             left_item_id=left_item_id,
@@ -944,25 +1047,58 @@ class Results(Page):
         )
     
 class BannerPracticeBDM(Page):
-    pass
-
-class BannerPracticeBinary(Page):
-    pass
-
-class PracticeCheckpoint(Page):
-    form_model = "player"
-    form_fields = ["practice_decision"]
-
-    @staticmethod
-    def vars_for_template(player: Player):
-        return dict(show_repeat_button=_can_request_repeat(player))
+    template_name = "my_experiment/BannerPracticeBDM.html"
 
     @staticmethod
     def before_next_page(player: Player, timeout_happened):
-        _apply_practice_checkpoint_decision(
+        player.bidding_phase = "practice"
+        player.current_phase = "practice"
+        player.bidding_real_started = False
+
+
+class BannerPracticeBinary(Page):
+    template_name = "my_experiment/BannerPracticeBinary.html"
+
+    @staticmethod
+    def before_next_page(player: Player, timeout_happened):
+        player.choice_phase = "practice"
+        player.current_phase = "practice"
+        player.choice_real_started = False
+
+
+class BDMPracticeCheckpoint(Page):
+    form_model = "player"
+    form_fields = ["bidding_practice_decision"]
+    template_name = "my_experiment/BDMPracticeCheckpoint.html"
+
+    @staticmethod
+    def vars_for_template(player: Player):
+        return dict(show_repeat_button=_can_request_repeat_bidding(player))
+
+    @staticmethod
+    def before_next_page(player: Player, timeout_happened):
+        _apply_checkpoint_decision(
             player,
-            allow_repeat=_can_request_repeat(player),
+            decision_field="bidding_practice_decision",
+            repeat_count_field="bidding_practice_repeat_count",
+            practice_cycle_field="bidding_practice_cycle_index",
+            phase_field="bidding_phase",
+            real_started_field="bidding_real_started",
+            completed_field="bidding_practice_completed",
+            allow_repeat=_can_request_repeat_bidding(player),
         )
+
+
+class BDMPracticeCheckpointRepeat(BDMPracticeCheckpoint):
+    template_name = "my_experiment/BDMPracticeCheckpoint.html"
+
+    @staticmethod
+    def is_displayed(player: Player):
+        return _show_repeat_block_bidding(player)
+
+    @staticmethod
+    def vars_for_template(player: Player):
+        return dict(show_repeat_button=_can_request_repeat_bidding(player))
 
 
 class BannerPracticeBDMRepeat(BannerPracticeBDM):
@@ -970,7 +1106,7 @@ class BannerPracticeBDMRepeat(BannerPracticeBDM):
 
     @staticmethod
     def is_displayed(player: Player):
-        return _show_repeat_block(player)
+        return _show_repeat_block_bidding(player)
 
 
 class WTPRepeat(WTP):
@@ -978,48 +1114,21 @@ class WTPRepeat(WTP):
 
     @staticmethod
     def is_displayed(player: Player):
-        return _show_repeat_block(player)
+        return _show_repeat_block_bidding(player)
 
-
-class BannerPracticeBinaryRepeat(BannerPracticeBinary):
-    template_name = "my_experiment/BannerPracticeBinary.html"
-
-    @staticmethod
-    def is_displayed(player: Player):
-        return _show_repeat_block(player)
-
-
-class MyPageRepeat(MyPage):
-    template_name = "my_experiment/MyPage.html"
-
-    @staticmethod
-    def is_displayed(player: Player):
-        return _show_repeat_block(player)
-
-
-class PracticeCheckpointRepeat(PracticeCheckpoint):
-    template_name = "my_experiment/PracticeCheckpoint.html"
-
-    @staticmethod
-    def is_displayed(player: Player):
-        return _show_repeat_block(player)
-
-    @staticmethod
-    def vars_for_template(player: Player):
-        return dict(show_repeat_button=_can_request_repeat(player))
-
-    @staticmethod
-    def before_next_page(player: Player, timeout_happened):
-        _apply_practice_checkpoint_decision(
-            player,
-            allow_repeat=_can_request_repeat(player),
-        )
 
 class BannerBeginReal(Page):
 
     @staticmethod
     def is_displayed(player: Player):
-        return bool(player.field_maybe_none("real_started"))
+        return bool(player.field_maybe_none("bidding_real_started"))
+
+    @staticmethod
+    def before_next_page(player: Player, timeout_happened):
+        player.bidding_phase = "real"
+        player.current_phase = "real"
+        player.real_started = True
+        player.bidding_real_started = True
 
 
 class WTPReal(WTP):
@@ -1027,7 +1136,7 @@ class WTPReal(WTP):
 
     @staticmethod
     def is_displayed(player: Player):
-        return bool(player.field_maybe_none("real_started"))
+        return bool(player.field_maybe_none("bidding_real_started"))
 
 
 class InstructionsRealChoiceStart(Page):
@@ -1035,7 +1144,72 @@ class InstructionsRealChoiceStart(Page):
 
     @staticmethod
     def is_displayed(player: Player):
-        return bool(player.field_maybe_none("real_started"))
+        return bool(player.field_maybe_none("bidding_real_started"))
+
+
+class ChoicePracticeCheckpoint(Page):
+    form_model = "player"
+    form_fields = ["choice_practice_decision"]
+    template_name = "my_experiment/ChoicePracticeCheckpoint.html"
+
+    @staticmethod
+    def vars_for_template(player: Player):
+        return dict(show_repeat_button=_can_request_repeat_choice(player))
+
+    @staticmethod
+    def before_next_page(player: Player, timeout_happened):
+        _apply_checkpoint_decision(
+            player,
+            decision_field="choice_practice_decision",
+            repeat_count_field="choice_practice_repeat_count",
+            practice_cycle_field="choice_practice_cycle_index",
+            phase_field="choice_phase",
+            real_started_field="choice_real_started",
+            completed_field="choice_practice_completed",
+            allow_repeat=_can_request_repeat_choice(player),
+        )
+
+
+class BannerPracticeBinaryRepeat(BannerPracticeBinary):
+    template_name = "my_experiment/BannerPracticeBinary.html"
+
+    @staticmethod
+    def is_displayed(player: Player):
+        return _show_repeat_block_choice(player)
+
+
+class MyPageRepeat(MyPage):
+    template_name = "my_experiment/MyPage.html"
+
+    @staticmethod
+    def is_displayed(player: Player):
+        return _show_repeat_block_choice(player)
+
+
+class ChoicePracticeCheckpointRepeat(ChoicePracticeCheckpoint):
+    template_name = "my_experiment/ChoicePracticeCheckpoint.html"
+
+    @staticmethod
+    def is_displayed(player: Player):
+        return _show_repeat_block_choice(player)
+
+    @staticmethod
+    def vars_for_template(player: Player):
+        return dict(show_repeat_button=_can_request_repeat_choice(player))
+
+
+class BannerBeginChoiceReal(Page):
+    template_name = "my_experiment/BannerBeginReal.html"
+
+    @staticmethod
+    def is_displayed(player: Player):
+        return bool(player.field_maybe_none("choice_real_started"))
+
+    @staticmethod
+    def before_next_page(player: Player, timeout_happened):
+        player.choice_phase = "real"
+        player.current_phase = "real"
+        player.choice_real_started = True
 
 
 class MyPageReal(MyPage):
@@ -1043,15 +1217,19 @@ class MyPageReal(MyPage):
 
     @staticmethod
     def is_displayed(player: Player):
-        return bool(player.field_maybe_none("real_started"))
+        return bool(player.field_maybe_none("choice_real_started"))
 
 
-_repeat_cycle_pages = [
+_bidding_repeat_cycle_pages = [
     BannerPracticeBDMRepeat,
     WTPRepeat,
+    BDMPracticeCheckpointRepeat,
+]
+
+_choice_repeat_cycle_pages = [
     BannerPracticeBinaryRepeat,
     MyPageRepeat,
-    PracticeCheckpointRepeat,
+    ChoicePracticeCheckpointRepeat,
 ]
 
 
@@ -1061,21 +1239,22 @@ page_sequence = [
 
     InstructionsBDM,
     BannerPracticeBDM,
-    WTP,                 # WTP page runs practice BDM first if repeating/practice mode
+    WTP,
+    BDMPracticeCheckpoint,
+    *_bidding_repeat_cycle_pages * int(C.MAX_PRACTICE_REPEAT_CYCLES),
+
+    BannerBeginReal,
+    WTPReal,
+    InstructionsRealChoiceStart,
 
     InstructionsBinary,
     BannerPracticeBinary,
-    MyPage,              # Binary page runs practice trials first if repeating/practice mode
+    MyPage,
+    ChoicePracticeCheckpoint,
+    *_choice_repeat_cycle_pages * int(C.MAX_PRACTICE_REPEAT_CYCLES),
 
-    PracticeCheckpoint,  # Repeat Practice / Begin Real Experiment
-
-    *_repeat_cycle_pages * int(C.MAX_PRACTICE_REPEAT_CYCLES),
-
-    BannerBeginReal,
-
-    WTPReal,             # real BDM/WTP (same page, but JS in “real mode” now)
-    InstructionsRealChoiceStart,
-    MyPageReal,          # real binary choice (same page, “real mode” now)
+    BannerBeginChoiceReal,
+    MyPageReal,
 
     ResultsWaitPage,
     Results,
