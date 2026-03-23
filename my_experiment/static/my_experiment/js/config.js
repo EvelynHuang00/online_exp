@@ -11,7 +11,8 @@ export const EXPERIMENT = {
 
 export const BDM = {
   ENDOWMENT: 1.00,
-  PRICE_STEP: 0.05,
+  PRICE_STEP: 0.01,
+  SHOW_UP_FEE: 5.0,
   PRACTICE_TRIALS: 3,
 };
 
@@ -27,7 +28,7 @@ export const SNACKS = [
 export const PRACTICE_SNACKS = [
   {
     id: "practice_snack1",
-    label: "Mini Pretzel Twist",
+    label: "One Mini Pretzel Twist",
     img: "/static/my_experiment/assets/snacks/practice_snack1.png",
   },
   {

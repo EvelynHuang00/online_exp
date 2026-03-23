@@ -49,7 +49,7 @@ class C(BaseConstants):
         "snack4": "One Saltine Cracker",
         "snack5": "One Grape",
         "snack6": "One Baby Carrot",
-        "practice_snack1": "Mini Pretzel Twist",
+        "practice_snack1": "One Mini Pretzel Twist",
         "practice_snack2": "One Gummy Bear",
         "practice_snack3": "One Almond",
     }

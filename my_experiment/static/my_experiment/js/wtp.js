@@ -62,6 +62,8 @@ const phase = resolvePhase();
 const practiceCycle = resolvePracticeCycle();
 const isReal = phase === "real";
 
+const SHOW_UP_FEE = Number(BDM.SHOW_UP_FEE ?? 5);
+
 const formatMoney = (value) => `$${Number(value).toFixed(2)}`;
 
 const sliderState = new Map();
@@ -189,6 +191,7 @@ function renderOutcomeBlock(targetEl, { heading, snackLabel, price, bid, purchas
     <div class="bdm-outcome">
       <h4>${heading}</h4>
       <p>${verdict}</p>
+      <p>Payment of ${paymentText} comes from your ${endowmentText} show-up fee, leaving ${remainingText}.</p>
     </div>
   `;
 }
@@ -216,7 +219,7 @@ function drawPrice() {
 
 const SLIDER_MIN = 0;
 const SLIDER_MAX = 1.0;
-const SLIDER_STEP = 0.05;
+const SLIDER_STEP = Number(BDM.PRICE_STEP ?? 0.01);
 
 // -------------------- general render function --------------------
 
@@ -328,6 +331,10 @@ function buildPracticeWTPPage() {
   hide(nextBtn);
   setNextEnabled(false);
 
+  const showUpFeeText = formatMoney(SHOW_UP_FEE);
+  const exampleDrawnPriceText = formatMoney(0.1);
+  const exampleRemainingText = formatMoney(SHOW_UP_FEE - 0.1);
+
   practiceEl.innerHTML = `
   <div class="instruction-shell">
     <div class="instruction-card" style="max-width: 900px; margin: 0 auto; padding: 32px 36px;">
@@ -374,6 +381,7 @@ function buildPracticeWTPPage() {
     }
 
     const endowment = Number(BDM.ENDOWMENT);
+    const showUpFee = SHOW_UP_FEE;
     const binding = pickBindingSnack(PRACTICE_SNACKS);
     const price_draw = drawPrice();
 
@@ -382,7 +390,7 @@ function buildPracticeWTPPage() {
 
     const purchase = bindingBid >= price_draw;
     const payment = purchase ? price_draw : 0;
-    const remaining = Number((endowment - payment).toFixed(2));
+    const remaining = Number((showUpFee - payment).toFixed(2));
     const timestamp = new Date().toISOString();
 
     const rows = out.bids.map((r) => {
@@ -393,7 +401,7 @@ function buildPracticeWTPPage() {
         snack_id: r.snack_id,
         snack_label: r.snack_label,
         bid: r.bid.toFixed(2),
-        endowment_initial: endowment.toFixed(2),
+        endowment_initial: showUpFee.toFixed(2),
         binding_snack_id: binding.id,
         is_binding: isBinding ? 1 : 0,
         price_draw: isBinding ? price_draw.toFixed(2) : "",
@@ -414,7 +422,7 @@ function buildPracticeWTPPage() {
       purchase,
       payment,
       remaining,
-      endowment,
+      endowment: showUpFee,
     });
 
     if (hiddenJson) hiddenJson.value = JSON.stringify(rows);
@@ -452,6 +460,7 @@ simulateBtn?.addEventListener("click", () => {
   }
 
   const endowment = Number(BDM.ENDOWMENT);
+  const showUpFee = SHOW_UP_FEE;
   const binding = pickBindingSnack(SNACKS);
   const price_draw = drawPrice();
 
@@ -460,7 +469,7 @@ simulateBtn?.addEventListener("click", () => {
 
   const purchase = bindingBid >= price_draw;
   const payment = purchase ? price_draw : 0;
-  const remaining = Number((endowment - payment).toFixed(2));
+  const remaining = Number((showUpFee - payment).toFixed(2));
   const timestamp = new Date().toISOString();
 
   const rows = out.bids.map((r) => {
@@ -472,7 +481,7 @@ simulateBtn?.addEventListener("click", () => {
       snack_label: r.snack_label,
       bid: r.bid.toFixed(2),
 
-      endowment_initial: endowment.toFixed(2),
+      endowment_initial: showUpFee.toFixed(2),
       binding_snack_id: binding.id,
       is_binding: isBinding ? 1 : 0,
       price_draw: isBinding ? price_draw.toFixed(2) : "",
@@ -492,7 +501,7 @@ simulateBtn?.addEventListener("click", () => {
     purchase,
     payment,
     remaining,
-    endowment,
+    endowment: showUpFee,
   });
 
   if (hiddenJson) hiddenJson.value = JSON.stringify(rows);
